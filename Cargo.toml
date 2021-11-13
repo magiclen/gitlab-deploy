@@ -1,0 +1,42 @@
+[package]
+name = "gitlab-deploy"
+version = "0.1.0"
+authors = ["Magic Len <len@magiclen.org>"]
+edition = "2018"
+repository = "https://github.com/magiclen/gitlab-deploy"
+homepage = "https://magiclen.org/gitlab-deploy"
+keywords = ["deploy"]
+categories = ["command-line-utilities"]
+description = "A practical deployment tool."
+readme = "README.md"
+license = "MIT"
+include = ["src/**/*", "Cargo.toml", "README.md", "LICENSE"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[dependencies]
+clap = "2.33.1"
+concat-with = "0.2"
+terminal_size = "0.1"
+
+execute = "0.2.9"
+
+once_cell = "1.8.0"
+regex = "1.5.4"
+
+validators = "0.23"
+
+trim-in-place = "0.1.6"
+slash-formatter = "3.1.2"
+tempfile = "3.2.0"
+
+log = "0.4.14"
+simplelog = { version = "0.11.0" }
+
+[dependencies.validators-derive]
+version = "0.23"
+default-features = false
+features = ["regex", "line", "http_url"]
