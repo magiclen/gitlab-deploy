@@ -1,6 +1,7 @@
 mod api_token;
 mod api_url_prefix;
 mod build_target;
+mod command;
 mod commit_sha;
 mod image_name;
 mod name;
@@ -19,6 +20,7 @@ use crate::validators::prelude::*;
 pub(crate) use api_token::*;
 pub(crate) use api_url_prefix::*;
 pub(crate) use build_target::*;
+pub(crate) use command::*;
 pub(crate) use commit_sha::*;
 pub(crate) use image_name::*;
 pub(crate) use name::*;
@@ -167,6 +169,24 @@ pub(crate) fn parse_phase(matches: &ArgMatches<'_>) -> Phase {
         }
         None => {
             error!("`--phase` needs to be set.");
+            process::exit(-2);
+        }
+    }
+}
+
+pub(crate) fn parse_command(matches: &ArgMatches<'_>) -> Command {
+    match matches.value_of("COMMAND") {
+        Some(command) => {
+            match Command::parse_str(command) {
+                Ok(command) => command,
+                Err(_) => {
+                    error!("{:?} is not a correct command.", command);
+                    process::exit(-2);
+                }
+            }
+        }
+        None => {
+            error!("`--command` needs to be set.");
             process::exit(-2);
         }
     }

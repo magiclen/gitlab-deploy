@@ -28,6 +28,7 @@ mod constants;
 mod functions;
 mod parse;
 
+mod back_control;
 mod back_deploy;
 mod back_develop;
 mod front_control;
@@ -40,6 +41,7 @@ use std::process;
 use clap::{App, Arg, ArgMatches, SubCommand};
 use terminal_size::terminal_size;
 
+use back_control::*;
 use back_deploy::*;
 use back_develop::*;
 use front_control::*;
@@ -109,6 +111,16 @@ fn main() {
         info!("Running {} {} for back-end deployment", APP_NAME, CARGO_PKG_VERSION);
 
         if let Err(err) = back_deploy(sub_matches) {
+            err.to_string().split('\n').for_each(|line| {
+                if !line.is_empty() {
+                    error!("{}", line);
+                }
+            });
+        }
+    } else if let Some(sub_matches) = matches.subcommand_matches("back-control") {
+        info!("Running {} {} for back-end control", APP_NAME, CARGO_PKG_VERSION);
+
+        if let Err(err) = back_control(sub_matches) {
             err.to_string().split('\n').for_each(|line| {
                 if !line.is_empty() {
                     error!("{}", line);
@@ -203,6 +215,13 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         .takes_value(true)
         .help("Sets the phase");
 
+    let arg_command = Arg::with_name("COMMAND")
+        .display_order(13)
+        .required(true)
+        .long("command")
+        .takes_value(true)
+        .help("Sets the command");
+
     let arg_gitlab_api_url_prefix = Arg::with_name("GITLAB_API_URL_PREFIX")
         .display_order(100)
         .required(true)
@@ -292,8 +311,25 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_gitlab_api_token.clone(),
         ]);
 
-    let app =
-        app.subcommands([front_develop, front_deploy, front_control, back_develop, back_deploy]);
+    let back_control = SubCommand::with_name("back-control")
+        .about("Control the project on multiple hosts according to the phase")
+        .args(&[
+            arg_gitlab_project_id.clone(),
+            arg_commit_sha.clone(),
+            arg_project_name.clone(),
+            arg_reference_name.clone(),
+            arg_phase.clone(),
+            arg_command.clone(),
+        ]);
+
+    let app = app.subcommands([
+        front_develop,
+        front_deploy,
+        front_control,
+        back_develop,
+        back_deploy,
+        back_control,
+    ]);
 
     app.after_help("Enjoy it! https://magiclen.org").get_matches()
 }

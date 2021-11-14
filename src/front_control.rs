@@ -33,7 +33,7 @@ pub(crate) fn front_control(matches: &ArgMatches) -> Result<(), Box<dyn Error>> 
     }
 
     for ssh_user_host in ssh_user_hosts.iter() {
-        info!("Controlling to {}", ssh_user_host);
+        info!("Controlling to {} (apply)", ssh_user_host);
 
         let ssh_home = get_ssh_home(ssh_user_host)?;
 

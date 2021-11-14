@@ -289,10 +289,13 @@ pub(crate) fn run_front_build(
     Ok(())
 }
 
-pub(crate) fn run_back_build(temp_dir: &TempDir) -> Result<(), Box<dyn Error>> {
+pub(crate) fn run_back_build(
+    temp_dir: &TempDir,
+    commit_sha: &CommitSha,
+) -> Result<(), Box<dyn Error>> {
     info!("Running deploy/build.sh");
 
-    let mut command: Command = command!("bash 'deploy/build.sh'");
+    let mut command: Command = command_args!("bash", "deploy/build.sh", commit_sha.get_short_sha());
 
     command.current_dir(temp_dir.path());
 

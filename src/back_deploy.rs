@@ -46,7 +46,7 @@ pub(crate) fn back_deploy(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     let (image_name, docker_compose) = check_back_deploy(&temp_dir, &commit_sha)?;
 
-    run_back_build(&temp_dir)?;
+    run_back_build(&temp_dir, &commit_sha)?;
 
     for ssh_user_host in ssh_user_hosts.iter() {
         info!("Deploying to {}", ssh_user_host);
