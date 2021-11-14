@@ -67,7 +67,7 @@ fn main() {
 
     let matches = get_matches();
 
-    if let Some(sub_matches) = matches.subcommand_matches("front-develop") {
+    if let Some(sub_matches) = matches.subcommand_matches("frontend-develop") {
         info!("Running {} {} for front-end development", APP_NAME, CARGO_PKG_VERSION);
 
         if let Err(err) = front_develop(sub_matches) {
@@ -77,8 +77,8 @@ fn main() {
                 }
             });
         }
-    } else if let Some(sub_matches) = matches.subcommand_matches("front-deploy") {
-        info!("Running {} {} for front-end deployment", APP_NAME, CARGO_PKG_VERSION);
+    } else if let Some(sub_matches) = matches.subcommand_matches("frontend-deploy") {
+        info!("Running {} {} for frontend-end deployment", APP_NAME, CARGO_PKG_VERSION);
 
         if let Err(err) = front_deploy(sub_matches) {
             err.to_string().split('\n').for_each(|line| {
@@ -87,8 +87,8 @@ fn main() {
                 }
             });
         }
-    } else if let Some(sub_matches) = matches.subcommand_matches("front-control") {
-        info!("Running {} {} for front-end control", APP_NAME, CARGO_PKG_VERSION);
+    } else if let Some(sub_matches) = matches.subcommand_matches("frontend-control") {
+        info!("Running {} {} for frontend-end control", APP_NAME, CARGO_PKG_VERSION);
 
         if let Err(err) = front_control(sub_matches) {
             err.to_string().split('\n').for_each(|line| {
@@ -97,7 +97,7 @@ fn main() {
                 }
             });
         }
-    } else if let Some(sub_matches) = matches.subcommand_matches("back-develop") {
+    } else if let Some(sub_matches) = matches.subcommand_matches("backend-develop") {
         info!("Running {} {} for back-end development", APP_NAME, CARGO_PKG_VERSION);
 
         if let Err(err) = back_develop(sub_matches) {
@@ -107,7 +107,7 @@ fn main() {
                 }
             });
         }
-    } else if let Some(sub_matches) = matches.subcommand_matches("back-deploy") {
+    } else if let Some(sub_matches) = matches.subcommand_matches("backend-deploy") {
         info!("Running {} {} for back-end deployment", APP_NAME, CARGO_PKG_VERSION);
 
         if let Err(err) = back_deploy(sub_matches) {
@@ -117,7 +117,7 @@ fn main() {
                 }
             });
         }
-    } else if let Some(sub_matches) = matches.subcommand_matches("back-control") {
+    } else if let Some(sub_matches) = matches.subcommand_matches("backend-control") {
         info!("Running {} {} for back-end control", APP_NAME, CARGO_PKG_VERSION);
 
         if let Err(err) = back_control(sub_matches) {
@@ -139,12 +139,12 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         .version(CARGO_PKG_VERSION)
         .author(CARGO_PKG_AUTHORS)
         .about(concat!("GitLab Deploy is used for deploying software projects to multiple hosts during different phases\n\nEXAMPLES:\n", concat_line!(prefix "gitlab-deploy ",
-            "front-develop   --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --build-target develop",
-            "front-deploy    --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test --build-target test",
-            "front-control   --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test",
-            "backend-develop --gitlab-project-id 123 --gitlab-project-path magic/website --project-name website --reference develop",
-            "backend-deploy  --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test",
-            "backend-control --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test --command up",
+            "frontend-develop   --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --build-target develop",
+            "frontend-deploy    --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test --build-target test",
+            "frontend-control   --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test",
+            "backend-develop    --gitlab-project-id 123 --gitlab-project-path website-api                     --project-name website --reference develop",
+            "backend-deploy     --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test",
+            "backend-control    --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test --command up",
         )));
 
     let arg_gitlab_project_id = Arg::with_name("GITLAB_PROJECT_ID")
@@ -254,8 +254,8 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         .env("DEVELOP_SSH_HOST")
         .help("Sets the SSH user, host and the optional port for development");
 
-    let front_develop = SubCommand::with_name("front-develop")
-        .about("Fetch the project via GitLab API and then build it and use the public static files on a development host")
+    let front_develop = SubCommand::with_name("frontend-develop")
+        .about("Fetches the project via GitLab API and then build it and use the public static files on a development host")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),
@@ -265,8 +265,8 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_develop_ssh_user_host.clone(),
         ]);
 
-    let front_deploy = SubCommand::with_name("front-deploy")
-        .about("Fetch the project via GitLab API and then build it and deploy the archive of public static files on multiple hosts according to the phase")
+    let front_deploy = SubCommand::with_name("frontend-deploy")
+        .about("Fetches the project via GitLab API and then build it and deploy the archive of public static files on multiple hosts according to the phase")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),
@@ -278,8 +278,8 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_gitlab_api_token.clone(),
         ]);
 
-    let front_control = SubCommand::with_name("front-control")
-        .about("Control the project on multiple hosts according to the phase")
+    let front_control = SubCommand::with_name("frontend-control")
+        .about("Controls the project on multiple hosts according to the phase")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),
@@ -288,8 +288,8 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_phase.clone(),
         ]);
 
-    let back_develop = SubCommand::with_name("back-develop")
-        .about("Fetch the project via Git and checkout to a specific branch and then start up the service on a development host")
+    let back_develop = SubCommand::with_name("backend-develop")
+        .about("Fetches the project via Git and checkout to a specific branch and then start up the service on a development host")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_project_name.clone(),
@@ -299,8 +299,8 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_develop_ssh_user_host.clone(),
         ]);
 
-    let back_deploy = SubCommand::with_name("back-deploy")
-        .about("Fetch the project via GitLab API and then build it and deploy the docker image on multiple hosts according to the phase")
+    let back_deploy = SubCommand::with_name("backend-deploy")
+        .about("Fetches the project via GitLab API and then build it and deploy the docker image on multiple hosts according to the phase")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),
@@ -311,8 +311,8 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_gitlab_api_token.clone(),
         ]);
 
-    let back_control = SubCommand::with_name("back-control")
-        .about("Control the project on multiple hosts according to the phase")
+    let back_control = SubCommand::with_name("backend-control")
+        .about("Controls the project on multiple hosts according to the phase")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),
