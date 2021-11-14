@@ -194,6 +194,8 @@ pub(crate) fn run_front_build(
     temp_dir: &TempDir,
     target: BuildTarget,
 ) -> Result<(), Box<dyn Error>> {
+    info!("Running deploy/build.sh");
+
     let mut command: Command = command_args!("bash", "deploy/build.sh", target.as_ref(),);
 
     command.current_dir(temp_dir.path());

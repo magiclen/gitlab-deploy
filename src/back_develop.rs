@@ -44,9 +44,11 @@ pub(crate) fn back_develop(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let exist = check_directory_exist(&ssh_user_host, git_path)?;
 
     if exist {
+        info!("The project exists, trying to pull");
+
         check_back_deploy_via_ssh(&ssh_user_host, ssh_root.as_str())?;
 
-        info!("The project exists, trying to pull");
+        info!("Running deploy/develop-down.sh");
 
         let mut command = create_ssh_command(&ssh_user_host, format!("cd {SSH_ROOT:?} && (bash 'deploy/develop-down.sh' || true) && git checkout {REFERENCE:?} && git pull origin {REFERENCE:?}",
              SSH_ROOT = ssh_root,
@@ -91,7 +93,7 @@ pub(crate) fn back_develop(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     check_back_deploy_via_ssh(&ssh_user_host, ssh_root.as_str())?;
 
-    info!("Trying to start up the service");
+    info!("Running deploy/develop-up.sh");
 
     let mut command = create_ssh_command(
         &ssh_user_host,
