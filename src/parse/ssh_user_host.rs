@@ -1,3 +1,5 @@
+use std::fmt::{self, Display, Formatter};
+
 use crate::regex::Regex;
 
 #[derive(Debug)]
@@ -49,5 +51,16 @@ impl SshUserHost {
     #[inline]
     pub(crate) fn user_host(&self) -> String {
         format!("{}@{}", self.user, self.host)
+    }
+}
+
+impl Display for SshUserHost {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        if let Some(port) = self.port {
+            f.write_fmt(format_args!("{}@{}:{}", self.user, self.host, port))
+        } else {
+            f.write_fmt(format_args!("{}@{}", self.user, self.host))
+        }
     }
 }

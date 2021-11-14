@@ -10,9 +10,9 @@ extern crate regex;
 extern crate validators_derive;
 extern crate validators;
 
-extern crate trim_in_place;
 extern crate slash_formatter;
 extern crate tempfile;
+extern crate trim_in_place;
 
 #[macro_use]
 extern crate execute;
@@ -22,6 +22,7 @@ extern crate log;
 
 extern crate simplelog;
 
+mod constants;
 mod front_develop;
 mod functions;
 mod parse;
@@ -53,7 +54,7 @@ fn main() {
         info!("Running {} {} for front-end development", APP_NAME, CARGO_PKG_VERSION);
 
         if let Err(err) = front_develop(sub_matches) {
-            error!("{:#?}", err);
+            error!("{}", err);
         }
     } else {
         error!("You need to input a subcommand!");

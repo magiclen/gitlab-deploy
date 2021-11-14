@@ -1,12 +1,13 @@
 use std::error::Error;
 use std::fs;
 use std::io::ErrorKind;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::tempfile::TempDir;
 
 use crate::execute::Execute;
 
+use crate::slash_formatter::delete_end_slash_in_place;
 use crate::trim_in_place::TrimInPlace;
 
 use crate::validators::prelude::*;
@@ -94,19 +95,76 @@ pub(crate) fn run_front_build<T: AsRef<str>>(
     temp_dir: &TempDir,
     target: T,
 ) -> Result<(), Box<dyn Error>> {
-    let mut command: Command = command_args!("bash",
-        "deploy/build.sh",
-        target.as_ref(),
-    );
+    let mut command: Command = command_args!("bash", "deploy/build.sh", target.as_ref(),);
 
     command.current_dir(temp_dir.path());
 
-    let mut child = command.spawn()?;
+    let output = command.execute_output()?;
 
-    let result = child.wait()?;
-
-    if !result.success() {
+    if !output.status.success() {
         return Err("Build failed".into());
+    }
+
+    Ok(())
+}
+
+#[inline]
+pub(crate) fn create_ssh_command<S: AsRef<str>>(ssh_user_host: &SshUserHost, command: S) -> Command {
+    command_args!(
+        "ssh",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "BatchMode=yes",
+        "-p",
+        ssh_user_host.get_port().to_string(),
+        ssh_user_host.user_host(),
+        command.as_ref()
+    )
+}
+
+pub(crate) fn get_ssh_home(ssh_user_host: &SshUserHost) -> Result<String, Box<dyn Error>> {
+    let mut command = create_ssh_command(ssh_user_host, "echo $HOME");
+
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
+
+    let output = command.execute_output()?;
+
+    if !output.status.success() {
+        String::from_utf8_lossy(output.stderr.as_slice()).split('\n').for_each(|line| {
+            if !line.is_empty() {
+                error!("{}", line);
+            }
+        });
+
+        return Err(format!("Cannot get the home directory of {}", ssh_user_host).into());
+    }
+
+    let mut home = String::from_utf8(output.stdout)?;
+
+    home.trim_in_place();
+
+    delete_end_slash_in_place(&mut home);
+
+    Ok(home)
+}
+
+pub(crate) fn list_ssh_files<S: AsRef<str>>(ssh_user_host: &SshUserHost, path: S) -> Result<(), Box<dyn Error>> {
+    let mut command = create_ssh_command(ssh_user_host, format!("ls {PATH:?}",
+       PATH = path.as_ref(),
+    ));
+
+    command.stderr(Stdio::piped());
+
+    let output = command.execute_output()?;
+
+    if !output.status.success() {
+        String::from_utf8_lossy(output.stderr.as_slice()).split('\n').for_each(|line| {
+            if !line.is_empty() {
+                warn!("{}", line);
+            }
+        });
     }
 
     Ok(())

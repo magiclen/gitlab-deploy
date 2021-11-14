@@ -5,6 +5,10 @@ Gitlab Deploy
 
 GitLab Deploy is a tool to deploy your software projects to multiple hosts into different phases.
 
+## Setup
+
+
+
 ## Help
 
 ## License
