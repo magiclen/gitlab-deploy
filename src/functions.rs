@@ -1,6 +1,9 @@
+use std::collections::{HashMap, HashSet};
+use std::env;
 use std::error::Error;
-use std::fs;
-use std::io::ErrorKind;
+use std::fs::{self, File};
+use std::io::{BufRead, BufReader, ErrorKind};
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::tempfile::TempDir;
@@ -8,11 +11,13 @@ use crate::tempfile::TempDir;
 use crate::execute::Execute;
 
 use crate::regex::Regex;
+use crate::scanner_rust::{ScannerError, ScannerStr};
 use crate::slash_formatter::delete_end_slash_in_place;
 use crate::trim_in_place::TrimInPlace;
 
 use crate::validators::prelude::*;
 
+use crate::constants::*;
 use crate::parse::*;
 
 pub(crate) fn check_zstd() -> Result<(), Box<dyn Error>> {
@@ -26,6 +31,7 @@ pub(crate) fn check_zstd() -> Result<(), Box<dyn Error>> {
 }
 
 pub(crate) fn check_ssh() -> Result<(), Box<dyn Error>> {
+    // scp should also be checked implicitly
     let mut command = command!("ssh -V");
 
     if command.execute_check_exit_status_code(0).is_err() {
@@ -196,7 +202,7 @@ pub(crate) fn run_front_build(
 ) -> Result<(), Box<dyn Error>> {
     info!("Running deploy/build.sh");
 
-    let mut command: Command = command_args!("bash", "deploy/build.sh", target.as_ref(),);
+    let mut command: Command = command_args!("bash", "deploy/build.sh", target.as_ref());
 
     command.current_dir(temp_dir.path());
 
@@ -224,6 +230,25 @@ pub(crate) fn create_ssh_command<S: AsRef<str>>(
         ssh_user_host.get_port().to_string(),
         ssh_user_host.user_host(),
         command.as_ref()
+    )
+}
+
+#[inline]
+pub(crate) fn create_scp_command<F: AsRef<str>, T: AsRef<str>>(
+    ssh_user_host: &SshUserHost,
+    from: F,
+    to: T,
+) -> Command {
+    command_args!(
+        "scp",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "BatchMode=yes",
+        "-P",
+        ssh_user_host.get_port().to_string(),
+        from.as_ref(),
+        format!("{}:{}", ssh_user_host.user_host(), to.as_ref()),
     )
 }
 
@@ -339,7 +364,7 @@ pub(crate) fn download_and_extract_archive(
     api_url_prefix: ApiUrlPrefix,
     api_token: ApiToken,
     project_id: u64,
-    commit_sha: CommitSha,
+    commit_sha: &CommitSha,
 ) -> Result<(), Box<dyn Error>> {
     let archive_url = format!(
         "{GITLAB_API_URL_PREFIX}/projects/{PROJECT_ID}/repository/archive?sha={COMMIT_SHA}",
@@ -375,4 +400,114 @@ pub(crate) fn download_and_extract_archive(
     }
 
     Ok(())
+}
+
+pub(crate) fn find_ssh_user_hosts(
+    phase: Phase,
+    project_id: u64,
+) -> Result<HashSet<SshUserHost>, Box<dyn Error>> {
+    let mut home = env::var("HOME")?;
+
+    delete_end_slash_in_place(&mut home);
+
+    let phase_path = Path::new(home.as_str()).join(PHASE_DIRECTORY).join(phase.as_ref());
+
+    let file = match File::open(phase_path.as_path()) {
+        Ok(f) => f,
+        Err(ref err) if err.kind() == ErrorKind::NotFound => {
+            return Err(format!("{:?} is not a supported phase!", phase.as_ref()).into());
+        }
+        Err(err) => return Err(err.into()),
+    };
+
+    let mut reader = BufReader::new(file);
+
+    let mut map: HashMap<u64, HashSet<SshUserHost>> = HashMap::new();
+
+    let mut line_number = 0;
+
+    let mut line = String::new();
+
+    loop {
+        line.clear();
+        line_number += 1;
+
+        let c = reader.read_line(&mut line)?;
+
+        if c == 0 {
+            break;
+        }
+
+        if let Some(index) = line.find('#') {
+            unsafe {
+                line.as_mut_vec().set_len(index);
+            }
+        }
+
+        let mut sc = ScannerStr::new(&line);
+
+        let project_id = match sc.next_u64() {
+            Ok(r) => {
+                match r {
+                    Some(r) => r,
+                    None => continue,
+                }
+            }
+            Err(err) => {
+                match err {
+                    ScannerError::ParseIntError(_) => {
+                        return Err(format!(
+                            "In {PHASE_PATH:?} at line {LINE}, cannot read the project id: {}",
+                            err,
+                            PHASE_PATH = phase_path,
+                            LINE = line_number
+                        )
+                        .into())
+                    }
+                    ScannerError::IOError(err) => return Err(err.into()),
+                    ScannerError::ParseFloatError(_) => unreachable!(),
+                }
+            }
+        };
+
+        let mut set: HashSet<SshUserHost> = HashSet::with_capacity(1);
+
+        while let Some(user_host) = sc.next()? {
+            let ssh_user_host = match SshUserHost::parse_str(user_host) {
+                Ok(ssh_user_host) => ssh_user_host,
+                Err(_) => {
+                    return Err(format!(
+                    "In {PHASE_PATH:?} at line {LINE}, the format of {USER_HOST:?} is not correct",
+                    PHASE_PATH = phase_path,
+                    LINE = line_number,
+                    USER_HOST = user_host
+                )
+                    .into())
+                }
+            };
+
+            if !set.insert(ssh_user_host) {
+                return Err(format!(
+                    "In {PHASE_PATH:?} at line {LINE}, {USER_HOST:?} is duplicated",
+                    PHASE_PATH = phase_path,
+                    LINE = line_number,
+                    USER_HOST = user_host
+                )
+                .into());
+            }
+        }
+
+        map.insert(project_id, set);
+    }
+
+    if let Some(set) = map.remove(&project_id) {
+        Ok(set)
+    } else {
+        Err(format!(
+            "The project {PROJECT_ID} is not set in {PHASE_PATH:?}",
+            PROJECT_ID = project_id,
+            PHASE_PATH = phase_path
+        )
+        .into())
+    }
 }

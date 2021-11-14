@@ -4,6 +4,7 @@ mod build_target;
 mod commit_sha;
 mod image_name;
 mod name;
+mod phase;
 mod project_path;
 mod reference;
 mod ssh_url_prefix;
@@ -21,6 +22,7 @@ pub(crate) use build_target::*;
 pub(crate) use commit_sha::*;
 pub(crate) use image_name::*;
 pub(crate) use name::*;
+pub(crate) use phase::*;
 pub(crate) use project_path::*;
 pub(crate) use reference::*;
 pub(crate) use ssh_url_prefix::*;
@@ -80,6 +82,24 @@ pub(crate) fn parse_project_name(matches: &ArgMatches<'_>) -> Name {
     }
 }
 
+pub(crate) fn parse_reference_name(matches: &ArgMatches<'_>) -> Name {
+    match matches.value_of("REFERENCE_NAME") {
+        Some(reference_name) => {
+            match Name::parse_str(reference_name) {
+                Ok(reference_name) => reference_name,
+                Err(_) => {
+                    error!("{:?} is not a correct reference name.", reference_name);
+                    process::exit(-2);
+                }
+            }
+        }
+        None => {
+            error!("`--reference-name` needs to be set.");
+            process::exit(-2);
+        }
+    }
+}
+
 pub(crate) fn parse_project_path(matches: &ArgMatches<'_>) -> ProjectPath {
     match matches.value_of("GITLAB_PROJECT_PATH") {
         Some(project_path) => {
@@ -129,6 +149,24 @@ pub(crate) fn parse_build_target(matches: &ArgMatches<'_>) -> BuildTarget {
         }
         None => {
             error!("`--build-target` needs to be set.");
+            process::exit(-2);
+        }
+    }
+}
+
+pub(crate) fn parse_phase(matches: &ArgMatches<'_>) -> Phase {
+    match matches.value_of("PHASE") {
+        Some(target) => {
+            match Phase::parse_str(target) {
+                Ok(target) => target,
+                Err(_) => {
+                    error!("{:?} is not a correct build target.", target);
+                    process::exit(-2);
+                }
+            }
+        }
+        None => {
+            error!("`--phase` needs to be set.");
             process::exit(-2);
         }
     }

@@ -2,11 +2,11 @@ use std::fmt::{self, Display, Formatter};
 
 use crate::regex::Regex;
 
-#[derive(Debug)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub(crate) struct SshUserHost {
     user: String,
     host: String,
-    port: Option<u16>,
+    port: u16,
 }
 
 impl SshUserHost {
@@ -27,7 +27,7 @@ impl SshUserHost {
         Ok(SshUserHost {
             user: String::from(user),
             host: String::from(host),
-            port,
+            port: port.unwrap_or(22),
         })
     }
 }
@@ -45,7 +45,7 @@ impl SshUserHost {
 
     #[inline]
     pub(crate) fn get_port(&self) -> u16 {
-        self.port.unwrap_or(22)
+        self.port
     }
 
     #[inline]
@@ -57,8 +57,8 @@ impl SshUserHost {
 impl Display for SshUserHost {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        if let Some(port) = self.port {
-            f.write_fmt(format_args!("{}@{}:{}", self.user, self.host, port))
+        if self.port != 22 {
+            f.write_fmt(format_args!("{}@{}:{}", self.user, self.host, self.port))
         } else {
             f.write_fmt(format_args!("{}@{}", self.user, self.host))
         }

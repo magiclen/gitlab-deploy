@@ -10,6 +10,7 @@ extern crate regex;
 extern crate validators_derive;
 extern crate validators;
 
+extern crate scanner_rust;
 extern crate slash_formatter;
 extern crate tempfile;
 extern crate trim_in_place;
@@ -24,6 +25,7 @@ extern crate simplelog;
 
 mod back_develop;
 mod constants;
+mod front_deploy;
 mod front_develop;
 mod functions;
 mod parse;
@@ -35,6 +37,7 @@ use clap::{App, Arg, ArgMatches, SubCommand};
 use terminal_size::terminal_size;
 
 use back_develop::*;
+use front_deploy::*;
 use front_develop::*;
 
 const APP_NAME: &str = "gitlab-deploy";
@@ -56,13 +59,31 @@ fn main() {
         info!("Running {} {} for front-end development", APP_NAME, CARGO_PKG_VERSION);
 
         if let Err(err) = front_develop(sub_matches) {
-            error!("{}", err);
+            err.to_string().split('\n').for_each(|line| {
+                if !line.is_empty() {
+                    error!("{}", line);
+                }
+            });
+        }
+    } else if let Some(sub_matches) = matches.subcommand_matches("front-deploy") {
+        info!("Running {} {} for front-end deployment", APP_NAME, CARGO_PKG_VERSION);
+
+        if let Err(err) = front_deploy(sub_matches) {
+            err.to_string().split('\n').for_each(|line| {
+                if !line.is_empty() {
+                    error!("{}", line);
+                }
+            });
         }
     } else if let Some(sub_matches) = matches.subcommand_matches("back-develop") {
         info!("Running {} {} for back-end development", APP_NAME, CARGO_PKG_VERSION);
 
         if let Err(err) = back_develop(sub_matches) {
-            error!("{}", err);
+            err.to_string().split('\n').for_each(|line| {
+                if !line.is_empty() {
+                    error!("{}", line);
+                }
+            });
         }
     } else {
         error!("You need to input a subcommand!");
@@ -110,8 +131,16 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         .env("CI_PROJECT_NAME")
         .help("Sets the name of this project");
 
-    let arg_gitlab_project_path = Arg::with_name("GITLAB_PROJECT_PATH")
+    let arg_reference_name = Arg::with_name("REFERENCE_NAME")
         .display_order(3)
+        .required(true)
+        .long("reference-name")
+        .takes_value(true)
+        .env("CI_COMMIT_REF_NAME")
+        .help("Sets the reference name of the commit");
+
+    let arg_gitlab_project_path = Arg::with_name("GITLAB_PROJECT_PATH")
+        .display_order(4)
         .required(true)
         .long("gitlab-project-path")
         .visible_aliases(&["project-path"])
@@ -135,6 +164,14 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         .visible_aliases(&["target"])
         .takes_value(true)
         .help("Sets the target of this build");
+
+    let arg_phase = Arg::with_name("PHASE")
+        .display_order(12)
+        .required(true)
+        .long("phase")
+        .visible_aliases(&["phase"])
+        .takes_value(true)
+        .help("Sets the phase");
 
     let arg_gitlab_api_url_prefix = Arg::with_name("GITLAB_API_URL_PREFIX")
         .display_order(100)
@@ -169,7 +206,7 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         .help("Sets the SSH user, host and the optional port for development");
 
     let front_develop = SubCommand::with_name("front-develop")
-        .about("On a single host, fetch the project via GitLab API and then build it and use the public static files on the same host")
+        .about("Fetch the project via GitLab API and then build it and use the public static files on a single host")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),
@@ -177,6 +214,19 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_gitlab_api_url_prefix.clone(),
             arg_gitlab_api_token.clone(),
             arg_develop_ssh_user_host.clone(),
+        ]);
+
+    let front_deploy = SubCommand::with_name("front-deploy")
+        .about("Fetch the project via GitLab API and then build it and deploy the public static files on multiple hosts according to the phase")
+        .args(&[
+            arg_gitlab_project_id.clone(),
+            arg_commit_sha.clone(),
+            arg_project_name.clone(),
+            arg_reference_name.clone(),
+            arg_build_target.clone(),
+            arg_phase.clone(),
+            arg_gitlab_api_url_prefix.clone(),
+            arg_gitlab_api_token.clone(),
         ]);
 
     let back_develop = SubCommand::with_name("back-develop")
@@ -190,7 +240,7 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_develop_ssh_user_host.clone(),
         ]);
 
-    let app = app.subcommands([front_develop, back_develop]);
+    let app = app.subcommands([front_develop, front_deploy, back_develop]);
 
     app.after_help("Enjoy it! https://magiclen.org").get_matches()
 }

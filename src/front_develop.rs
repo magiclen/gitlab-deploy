@@ -32,7 +32,7 @@ pub(crate) fn front_develop(matches: &ArgMatches) -> Result<(), Box<dyn Error>> 
 
     let temp_dir = tempdir()?;
 
-    download_and_extract_archive(&temp_dir, api_url_prefix, api_token, project_id, commit_sha)?;
+    download_and_extract_archive(&temp_dir, api_url_prefix, api_token, project_id, &commit_sha)?;
 
     let public_name = check_front_deploy(&temp_dir)?;
 
@@ -75,8 +75,7 @@ pub(crate) fn front_develop(matches: &ArgMatches) -> Result<(), Box<dyn Error>> 
     let tarball_path = format!("deploy/{PUBLIC_NAME}.tar.zst", PUBLIC_NAME = public_name.as_ref());
 
     {
-        let mut command1 =
-            command_args!("nice", "-n", "11", "zstd", "-T0", "-d", "-c", tarball_path,);
+        let mut command1 = command_args!("zstd", "-T0", "-d", "-c", tarball_path);
 
         command1.current_dir(temp_dir.path());
 
