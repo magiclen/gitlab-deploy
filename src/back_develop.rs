@@ -50,19 +50,39 @@ pub(crate) fn back_develop(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
         info!("Running deploy/develop-down.sh");
 
-        let mut command = create_ssh_command(&ssh_user_host, format!("cd {SSH_ROOT:?} && (bash 'deploy/develop-down.sh' || true) && git checkout {REFERENCE:?} && git pull origin {REFERENCE:?}",
-             SSH_ROOT = ssh_root,
-             REFERENCE = reference.as_ref(),
-        ));
+        {
+            let mut command = create_ssh_command(
+                &ssh_user_host,
+                format!("cd {SSH_ROOT:?} && bash 'deploy/develop-down.sh'", SSH_ROOT = ssh_root,),
+            );
 
-        let output = command.execute_output()?;
+            command.execute_output()?;
+        }
 
-        if !output.status.success() {
-            return Err(format!(
-                "Cannot pull and checkout out {REFERENCE:?}",
-                REFERENCE = reference.as_ref()
-            )
-            .into());
+        info!(
+            "Trying to checkout {REFERENCE:?} and pull the branch",
+            REFERENCE = reference.as_ref()
+        );
+
+        {
+            let mut command = create_ssh_command(
+                &ssh_user_host,
+                format!(
+                    "cd {SSH_ROOT:?} && git checkout {REFERENCE:?} && git pull origin {REFERENCE:?}",
+                    SSH_ROOT = ssh_root,
+                    REFERENCE = reference.as_ref(),
+                ),
+            );
+
+            let output = command.execute_output()?;
+
+            if !output.status.success() {
+                return Err(format!(
+                    "Cannot checkout out and pull {REFERENCE:?}",
+                    REFERENCE = reference.as_ref()
+                )
+                .into());
+            }
         }
     } else {
         let ssh_url = format!(
@@ -71,7 +91,11 @@ pub(crate) fn back_develop(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
             PROJECT_PATH = project_path.as_ref()
         );
 
-        info!("The project does not exist, trying to clone {:?}", ssh_url);
+        info!(
+            "The project does not exist, trying to clone {SSH_URL:?} and checkout {REFERENCE:?}",
+            SSH_URL = ssh_url,
+            REFERENCE = reference.as_ref(),
+        );
 
         let mut command = create_ssh_command(&ssh_user_host, format!("mkdir -p {SSH_ROOT:?} && cd {SSH_ROOT:?} && git clone --recursive {SSH_URL:?} . && git checkout {REFERENCE:?}",
              SSH_ROOT = ssh_root,

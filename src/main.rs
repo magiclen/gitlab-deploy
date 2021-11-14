@@ -45,9 +45,13 @@ const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 const CARGO_PKG_AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
 
 fn main() {
+    let mut log_config = simplelog::ConfigBuilder::new();
+
+    log_config.set_time_level(simplelog::LevelFilter::Debug);
+
     simplelog::TermLogger::init(
         simplelog::LevelFilter::Info,
-        simplelog::Config::default(),
+        log_config.build(),
         simplelog::TerminalMode::Mixed,
         simplelog::ColorChoice::Auto,
     )
