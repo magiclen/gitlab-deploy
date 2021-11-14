@@ -516,6 +516,8 @@ pub(crate) fn find_ssh_user_hosts(
 
     let mut line = String::new();
 
+    let mut last_project_id: Option<u64> = None;
+
     loop {
         line.clear();
         line_number += 1;
@@ -561,6 +563,29 @@ pub(crate) fn find_ssh_user_hosts(
         let mut set: HashSet<SshUserHost> = HashSet::with_capacity(1);
 
         while let Some(user_host) = sc.next()? {
+            if set.is_empty() && user_host == "." {
+                if sc.next()?.is_some() {
+                    return Err(format!(
+                        "In {PHASE_PATH:?} at line {LINE}, it is not correct",
+                        PHASE_PATH = phase_path,
+                        LINE = line_number,
+                    )
+                    .into());
+                }
+
+                match last_project_id {
+                    Some(last_project_id) => {
+                        set.extend(map.get(&last_project_id).unwrap().iter().cloned());
+                        break;
+                    }
+                    None => return Err(format!(
+                        "In {PHASE_PATH:?} at line {LINE}, should be written after the line that you want to reference",
+                        PHASE_PATH = phase_path,
+                        LINE = line_number,
+                    ).into())
+                }
+            }
+
             let ssh_user_host = match SshUserHost::parse_str(user_host) {
                 Ok(ssh_user_host) => ssh_user_host,
                 Err(_) => {
@@ -586,6 +611,7 @@ pub(crate) fn find_ssh_user_hosts(
         }
 
         map.insert(project_id, set);
+        last_project_id = Some(project_id);
     }
 
     if let Some(set) = map.remove(&project_id) {

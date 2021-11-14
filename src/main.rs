@@ -10,6 +10,7 @@ extern crate regex;
 extern crate validators_derive;
 extern crate validators;
 
+extern crate chrono;
 extern crate scanner_rust;
 extern crate slash_formatter;
 extern crate tempfile;
@@ -29,6 +30,7 @@ mod parse;
 
 mod back_deploy;
 mod back_develop;
+mod front_control;
 mod front_deploy;
 mod front_develop;
 
@@ -40,6 +42,7 @@ use terminal_size::terminal_size;
 
 use back_deploy::*;
 use back_develop::*;
+use front_control::*;
 use front_deploy::*;
 use front_develop::*;
 
@@ -76,6 +79,16 @@ fn main() {
         info!("Running {} {} for front-end deployment", APP_NAME, CARGO_PKG_VERSION);
 
         if let Err(err) = front_deploy(sub_matches) {
+            err.to_string().split('\n').for_each(|line| {
+                if !line.is_empty() {
+                    error!("{}", line);
+                }
+            });
+        }
+    } else if let Some(sub_matches) = matches.subcommand_matches("front-control") {
+        info!("Running {} {} for front-end control", APP_NAME, CARGO_PKG_VERSION);
+
+        if let Err(err) = front_control(sub_matches) {
             err.to_string().split('\n').for_each(|line| {
                 if !line.is_empty() {
                     error!("{}", line);
@@ -246,6 +259,16 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_gitlab_api_token.clone(),
         ]);
 
+    let front_control = SubCommand::with_name("front-control")
+        .about("Control the project on multiple hosts according to the phase")
+        .args(&[
+            arg_gitlab_project_id.clone(),
+            arg_commit_sha.clone(),
+            arg_project_name.clone(),
+            arg_reference_name.clone(),
+            arg_phase.clone(),
+        ]);
+
     let back_develop = SubCommand::with_name("back-develop")
         .about("Fetch the project via Git and checkout to a specific branch and then start up the service on a development host")
         .args(&[
@@ -269,7 +292,8 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_gitlab_api_token.clone(),
         ]);
 
-    let app = app.subcommands([front_develop, front_deploy, back_develop, back_deploy]);
+    let app =
+        app.subcommands([front_develop, front_deploy, front_control, back_develop, back_deploy]);
 
     app.after_help("Enjoy it! https://magiclen.org").get_matches()
 }
