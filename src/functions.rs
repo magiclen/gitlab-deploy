@@ -631,6 +631,7 @@ pub(crate) fn find_ssh_user_hosts(
     }
 }
 
+#[inline]
 pub(crate) fn current_timestamp() -> DelayedFormat<StrftimeItems<'static>> {
     Local::now().format("[%Y-%m-%d-%H-%M-%S]")
 }
