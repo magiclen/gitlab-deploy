@@ -6,7 +6,6 @@ use execute::Execute;
 
 use crate::clap::ArgMatches;
 
-use crate::chrono::prelude::*;
 use crate::trim_in_place::TrimInPlace;
 
 use crate::constants::*;
@@ -113,7 +112,7 @@ pub(crate) fn front_control(matches: &ArgMatches) -> Result<(), Box<dyn Error>> 
                     HTML_PATH = ssh_html_path,
                     REFERENCE_NAME = reference_name.as_ref(),
                     TARBALL = tarball,
-                    TIMESTAMP = Local::now().format("[%Y-%m-%d-%H-%M-%S]"),
+                    TIMESTAMP = current_timestamp(),
                     SHORT_SHA = commit_sha.get_short_sha(),
                 ));
 

@@ -10,6 +10,8 @@ use crate::tempfile::TempDir;
 
 use crate::execute::Execute;
 
+use crate::chrono::format::{DelayedFormat, StrftimeItems};
+use crate::chrono::Local;
 use crate::regex::Regex;
 use crate::scanner_rust::{ScannerError, ScannerStr};
 use crate::slash_formatter::delete_end_slash_in_place;
@@ -624,4 +626,8 @@ pub(crate) fn find_ssh_user_hosts(
         )
         .into())
     }
+}
+
+pub(crate) fn current_timestamp() -> DelayedFormat<StrftimeItems<'static>> {
+    Local::now().format("[%Y-%m-%d-%H-%M-%S]")
 }
