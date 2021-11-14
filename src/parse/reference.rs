@@ -1,7 +1,7 @@
 use crate::validators::prelude::*;
 
 #[derive(Debug, Validator)]
-#[validator(line)]
+#[validator(line(char_length(trimmed_min = 1)))]
 pub(crate) struct Reference(String);
 
 impl AsRef<str> for Reference {

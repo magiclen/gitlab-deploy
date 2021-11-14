@@ -1,7 +1,7 @@
 use crate::validators::prelude::*;
 
 #[derive(Debug, Validator)]
-#[validator(regex(r"^(ssh://)?[^/\s]+@[^/\s:]+(?::[0-9]{1,5})?$"))]
+#[validator(regex(r"^(ssh://)?[^/\s]+@[^/\s:]+(?::[^/\s]+)?$"))]
 pub(crate) struct SshUrlPrefix(String);
 
 impl AsRef<str> for SshUrlPrefix {

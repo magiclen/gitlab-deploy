@@ -2,7 +2,9 @@ mod api_token;
 mod api_url_prefix;
 mod build_target;
 mod commit_sha;
-mod public_name;
+mod image_name;
+mod name;
+mod project_path;
 mod reference;
 mod ssh_url_prefix;
 mod ssh_user_host;
@@ -17,7 +19,9 @@ pub(crate) use api_token::*;
 pub(crate) use api_url_prefix::*;
 pub(crate) use build_target::*;
 pub(crate) use commit_sha::*;
-pub(crate) use public_name::*;
+pub(crate) use image_name::*;
+pub(crate) use name::*;
+pub(crate) use project_path::*;
 pub(crate) use reference::*;
 pub(crate) use ssh_url_prefix::*;
 pub(crate) use ssh_user_host::*;
@@ -53,6 +57,42 @@ pub(crate) fn parse_commit_sha(matches: &ArgMatches<'_>) -> CommitSha {
         }
         None => {
             error!("`--commit-short-sha` needs to be set.");
+            process::exit(-2);
+        }
+    }
+}
+
+pub(crate) fn parse_project_name(matches: &ArgMatches<'_>) -> Name {
+    match matches.value_of("PROJECT_NAME") {
+        Some(project_name) => {
+            match Name::parse_str(project_name) {
+                Ok(project_name) => project_name,
+                Err(_) => {
+                    error!("{:?} is not a correct project name.", project_name);
+                    process::exit(-2);
+                }
+            }
+        }
+        None => {
+            error!("`--project-name` needs to be set.");
+            process::exit(-2);
+        }
+    }
+}
+
+pub(crate) fn parse_project_path(matches: &ArgMatches<'_>) -> ProjectPath {
+    match matches.value_of("GITLAB_PROJECT_PATH") {
+        Some(project_path) => {
+            match ProjectPath::parse_str(project_path) {
+                Ok(project_path) => project_path,
+                Err(_) => {
+                    error!("{:?} is not a correct project path.", project_path);
+                    process::exit(-2);
+                }
+            }
+        }
+        None => {
+            error!("`--gitlab-project-path` needs to be set.");
             process::exit(-2);
         }
     }

@@ -21,7 +21,6 @@ pub(crate) fn front_develop(matches: &ArgMatches) -> Result<(), Box<dyn Error>> 
     let project_id = parse_parse_id(matches);
 
     let commit_sha = parse_commit_sha(matches);
-    let commit_sha = commit_sha.get_sha();
 
     let build_target = parse_build_target(matches);
 
@@ -81,7 +80,10 @@ pub(crate) fn front_develop(matches: &ArgMatches) -> Result<(), Box<dyn Error>> 
 
         command1.current_dir(temp_dir.path());
 
-        let mut command2 = create_ssh_command(&ssh_user_host, format!("tar -xf - -C {HTML_PATH:?}", HTML_PATH = ssh_html_path));
+        let mut command2 = create_ssh_command(
+            &ssh_user_host,
+            format!("tar -xf - -C {HTML_PATH:?}", HTML_PATH = ssh_html_path),
+        );
 
         info!("Extracting {}", tarball_path);
 
