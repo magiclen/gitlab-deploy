@@ -3,7 +3,7 @@ Gitlab Deploy
 
 [![CI](https://github.com/magiclen/gitlab-deploy/actions/workflows/ci.yml/badge.svg)](https://github.com/magiclen/gitlab-deploy/actions/workflows/ci.yml)
 
-GitLab Deploy is used for deploying your software projects to multiple hosts into different phases.
+GitLab Deploy is used for deploying software projects to multiple hosts during different phases.
 
 ## Setup
 
