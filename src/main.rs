@@ -100,7 +100,7 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         .set_term_width(terminal_size().map(|(width, _)| width.0 as usize).unwrap_or(0))
         .version(CARGO_PKG_VERSION)
         .author(CARGO_PKG_AUTHORS)
-        .about(concat!("GitLab Deploy is a tool to deploy your software projects to multiple hosts into different phases\n\nEXAMPLES:\n", concat_line!(prefix "gitlab-deploy ",
+        .about(concat!("GitLab Deploy is used for deploying your software projects to multiple hosts into different phases\n\nEXAMPLES:\n", concat_line!(prefix "gitlab-deploy ",
             "front-develop   --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --build-target develop",
             "front-deploy    --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test --build-target test",
             "front-control   --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test",
