@@ -27,8 +27,9 @@ pub(crate) fn back_develop(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     info!("Deploying to {}", ssh_user_host);
 
-    let mut ssh_home = get_ssh_home(&ssh_user_host)?;
     let ssh_root = {
+        let mut ssh_home = get_ssh_home(&ssh_user_host)?;
+
         ssh_home.write_fmt(format_args!(
             "/{DEV_PROJECTS}/{PROJECT_NAME}-{PROJECT_ID}",
             DEV_PROJECTS = PROJECT_DIRECTORY,

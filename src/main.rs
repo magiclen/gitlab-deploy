@@ -23,12 +23,14 @@ extern crate log;
 
 extern crate simplelog;
 
-mod back_develop;
 mod constants;
-mod front_deploy;
-mod front_develop;
 mod functions;
 mod parse;
+
+mod back_deploy;
+mod back_develop;
+mod front_deploy;
+mod front_develop;
 
 use std::env;
 use std::process;
@@ -36,6 +38,7 @@ use std::process;
 use clap::{App, Arg, ArgMatches, SubCommand};
 use terminal_size::terminal_size;
 
+use back_deploy::*;
 use back_develop::*;
 use front_deploy::*;
 use front_develop::*;
@@ -83,6 +86,16 @@ fn main() {
         info!("Running {} {} for back-end development", APP_NAME, CARGO_PKG_VERSION);
 
         if let Err(err) = back_develop(sub_matches) {
+            err.to_string().split('\n').for_each(|line| {
+                if !line.is_empty() {
+                    error!("{}", line);
+                }
+            });
+        }
+    } else if let Some(sub_matches) = matches.subcommand_matches("back-deploy") {
+        info!("Running {} {} for back-end deployment", APP_NAME, CARGO_PKG_VERSION);
+
+        if let Err(err) = back_deploy(sub_matches) {
             err.to_string().split('\n').for_each(|line| {
                 if !line.is_empty() {
                     error!("{}", line);
@@ -210,7 +223,7 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         .help("Sets the SSH user, host and the optional port for development");
 
     let front_develop = SubCommand::with_name("front-develop")
-        .about("Fetch the project via GitLab API and then build it and use the public static files on a single host")
+        .about("Fetch the project via GitLab API and then build it and use the public static files on a development host")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),
@@ -221,7 +234,7 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         ]);
 
     let front_deploy = SubCommand::with_name("front-deploy")
-        .about("Fetch the project via GitLab API and then build it and deploy the public static files on multiple hosts according to the phase")
+        .about("Fetch the project via GitLab API and then build it and deploy the archive of public static files on multiple hosts according to the phase")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),
@@ -234,7 +247,7 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         ]);
 
     let back_develop = SubCommand::with_name("back-develop")
-        .about("On a single host, fetch the project via Git and checkout to a specific branch and then start up the service")
+        .about("Fetch the project via Git and checkout to a specific branch and then start up the service on a development host")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_project_name.clone(),
@@ -244,7 +257,19 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_develop_ssh_user_host.clone(),
         ]);
 
-    let app = app.subcommands([front_develop, front_deploy, back_develop]);
+    let back_deploy = SubCommand::with_name("back-deploy")
+        .about("Fetch the project via GitLab API and then build it and deploy the docker image on multiple hosts according to the phase")
+        .args(&[
+            arg_gitlab_project_id.clone(),
+            arg_commit_sha.clone(),
+            arg_project_name.clone(),
+            arg_reference_name.clone(),
+            arg_phase.clone(),
+            arg_gitlab_api_url_prefix.clone(),
+            arg_gitlab_api_token.clone(),
+        ]);
+
+    let app = app.subcommands([front_develop, front_deploy, back_develop, back_deploy]);
 
     app.after_help("Enjoy it! https://magiclen.org").get_matches()
 }

@@ -33,11 +33,13 @@ impl SshUserHost {
 }
 
 impl SshUserHost {
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn get_user(&self) -> &str {
         self.user.as_str()
     }
 
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn get_host(&self) -> &str {
         self.host.as_str()

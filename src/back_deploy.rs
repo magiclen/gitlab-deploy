@@ -11,12 +11,13 @@ use crate::constants::*;
 use crate::functions::*;
 use crate::parse::*;
 
-pub(crate) fn front_deploy(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
+pub(crate) fn back_deploy(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     check_zstd()?;
     check_ssh()?;
     check_wget()?;
     check_tar()?;
     check_bash()?;
+    check_docker()?;
 
     let project_id = parse_parse_id(matches);
 
@@ -25,8 +26,6 @@ pub(crate) fn front_deploy(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let project_name = parse_project_name(matches);
 
     let reference_name = parse_reference_name(matches);
-
-    let build_target = parse_build_target(matches);
 
     let phase = parse_phase(matches);
 
@@ -45,9 +44,9 @@ pub(crate) fn front_deploy(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     download_and_extract_archive(&temp_dir, api_url_prefix, api_token, project_id, &commit_sha)?;
 
-    let public_name = check_front_deploy(&temp_dir)?;
+    let (image_name, docker_compose) = check_back_deploy(&temp_dir, &commit_sha)?;
 
-    run_front_build(&temp_dir, build_target)?;
+    run_back_build(&temp_dir)?;
 
     for ssh_user_host in ssh_user_hosts.iter() {
         info!("Deploying to {}", ssh_user_host);
@@ -91,13 +90,36 @@ pub(crate) fn front_deploy(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
             }
         }
 
-        let tarball_path =
-            format!("deploy/{PUBLIC_NAME}.tar.zst", PUBLIC_NAME = public_name.as_ref());
+        let ssh_docker_compose_path = format!("{}/docker-compose.yml", ssh_project);
+
+        {
+            let mut command = create_ssh_command(
+                ssh_user_host,
+                format!(
+                    "cat - > {SSH_DOCKER_COMPOSE_PATH}",
+                    SSH_DOCKER_COMPOSE_PATH = ssh_docker_compose_path
+                ),
+            );
+
+            let status = command.execute_input(docker_compose.as_str())?;
+
+            if let Some(0) = status {
+                // do nothing
+            } else {
+                return Err(format!(
+                    "Cannot create the docker compose file {:?}.",
+                    ssh_docker_compose_path
+                )
+                .into());
+            }
+        }
+
+        let tarball_path = format!("deploy/{IMAGE_NAME}.tar.zst", IMAGE_NAME = image_name.as_ref());
 
         let ssh_tarball_path = format!(
-            "{SSH_PROJECT}/{PUBLIC_NAME}.tar.zst",
+            "{SSH_PROJECT}/{IMAGE_NAME}.tar.zst",
             SSH_PROJECT = ssh_project,
-            PUBLIC_NAME = public_name.as_ref()
+            IMAGE_NAME = image_name.as_ref()
         );
 
         {
@@ -119,6 +141,24 @@ pub(crate) fn front_deploy(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
                     PORT = ssh_user_host.get_port(),
                 )
                 .into());
+            }
+        }
+
+        info!("Extracting {}", tarball_path);
+
+        {
+            let mut command1 = command_args!("zstd", "-d", "-c", "-f", tarball_path);
+
+            command1.current_dir(temp_dir.path());
+
+            let mut command2 = create_ssh_command(ssh_user_host, "docker image load");
+
+            let status = command1.execute_multiple(&mut [&mut command2])?;
+
+            if let Some(0) = status {
+                // do nothing
+            } else {
+                return Err("Cannot deploy the docker image".into());
             }
         }
     }
