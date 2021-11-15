@@ -207,6 +207,13 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         .takes_value(true)
         .help("Sets the target of this build");
 
+    let arg_build_target_allow_null = Arg::with_name("BUILD_TARGET")
+        .display_order(11)
+        .long("build-target")
+        .visible_aliases(&["target"])
+        .takes_value(true)
+        .help("Sets the target of this build");
+
     let arg_phase = Arg::with_name("PHASE")
         .display_order(12)
         .required(true)
@@ -306,6 +313,7 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_commit_sha.clone(),
             arg_project_name.clone(),
             arg_reference_name.clone(),
+            arg_build_target_allow_null.clone(),
             arg_phase.clone(),
             arg_gitlab_api_url_prefix.clone(),
             arg_gitlab_api_token.clone(),
