@@ -78,7 +78,7 @@ fn main() {
             });
         }
     } else if let Some(sub_matches) = matches.subcommand_matches("frontend-deploy") {
-        info!("Running {} {} for frontend-end deployment", APP_NAME, CARGO_PKG_VERSION);
+        info!("Running {} {} for front-end deployment", APP_NAME, CARGO_PKG_VERSION);
 
         if let Err(err) = front_deploy(sub_matches) {
             err.to_string().split('\n').for_each(|line| {
@@ -88,7 +88,7 @@ fn main() {
             });
         }
     } else if let Some(sub_matches) = matches.subcommand_matches("frontend-control") {
-        info!("Running {} {} for frontend-end control", APP_NAME, CARGO_PKG_VERSION);
+        info!("Running {} {} for front-end control", APP_NAME, CARGO_PKG_VERSION);
 
         if let Err(err) = front_control(sub_matches) {
             err.to_string().split('\n').for_each(|line| {
