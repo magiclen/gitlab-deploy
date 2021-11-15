@@ -124,6 +124,10 @@ pub(crate) fn front_control(matches: &ArgMatches) -> Result<(), Box<dyn Error>> 
                 return Err("Cannot apply the project".into());
             }
         }
+
+        info!("Listing the public static files...");
+
+        list_ssh_files(&ssh_user_host, ssh_html_path)?;
     }
 
     info!("Successfully!");
