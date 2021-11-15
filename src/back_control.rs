@@ -98,12 +98,13 @@ pub(crate) fn back_control(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
         {
             let mut command =
-                create_ssh_command(ssh_user_host, format!("cd {SSH_PROJECT:?} && echo \"{TIMESTAMP} apply {REFERENCE_NAME}-{SHORT_SHA}\" >> {SSH_PROJECT:?}/../control.log && {COMMAND}",
+                create_ssh_command(ssh_user_host, format!("cd {SSH_PROJECT:?} && echo \"{TIMESTAMP} {COMMAND} {REFERENCE_NAME}-{SHORT_SHA}\" >> {SSH_PROJECT:?}/../control.log && {COMMAND_STR}",
                     SSH_PROJECT = ssh_project,
                     REFERENCE_NAME = reference_name.as_ref(),
                     TIMESTAMP = current_timestamp(),
                     SHORT_SHA = commit_sha.get_short_sha(),
-                    COMMAND = command_str,
+                    COMMAND = command.as_str(),
+                    COMMAND_STR = command_str,
                 ));
 
             let output = command.execute_output()?;
