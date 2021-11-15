@@ -90,7 +90,7 @@ pub(crate) fn back_control(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
                     let output = command.execute_output()?;
 
                     if !output.status.success() {
-                        warn!("{} cannot be down", folder);
+                        warn!("{} cannot be fully shut down", folder);
                     }
                 }
             }
