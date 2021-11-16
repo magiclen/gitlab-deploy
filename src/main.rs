@@ -76,7 +76,7 @@ fn main() {
                     error!("{}", line);
                 }
             });
-            
+
             process::exit(-3);
         }
     } else if let Some(sub_matches) = matches.subcommand_matches("frontend-deploy") {
@@ -88,7 +88,7 @@ fn main() {
                     error!("{}", line);
                 }
             });
-            
+
             process::exit(-3);
         }
     } else if let Some(sub_matches) = matches.subcommand_matches("frontend-control") {
@@ -100,7 +100,7 @@ fn main() {
                     error!("{}", line);
                 }
             });
-            
+
             process::exit(-3);
         }
     } else if let Some(sub_matches) = matches.subcommand_matches("backend-develop") {
@@ -112,7 +112,7 @@ fn main() {
                     error!("{}", line);
                 }
             });
-            
+
             process::exit(-3);
         }
     } else if let Some(sub_matches) = matches.subcommand_matches("backend-deploy") {
@@ -124,7 +124,7 @@ fn main() {
                     error!("{}", line);
                 }
             });
-            
+
             process::exit(-3);
         }
     } else if let Some(sub_matches) = matches.subcommand_matches("backend-control") {
@@ -136,7 +136,7 @@ fn main() {
                     error!("{}", line);
                 }
             });
-            
+
             process::exit(-3);
         }
     } else {
