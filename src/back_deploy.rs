@@ -27,6 +27,8 @@ pub(crate) fn back_deploy(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     let reference_name = parse_reference_name(matches);
 
+    let build_target = parse_build_target_allow_null(matches);
+
     let phase = parse_phase(matches);
 
     let api_url_prefix = parse_api_url_prefix(matches);
@@ -44,9 +46,10 @@ pub(crate) fn back_deploy(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     download_and_extract_archive(&temp_dir, api_url_prefix, api_token, project_id, &commit_sha)?;
 
-    let (image_name, docker_compose) = check_back_deploy(&temp_dir, &commit_sha)?;
+    let (image_name, docker_compose) =
+        check_back_deploy(&temp_dir, &commit_sha, build_target.as_ref())?;
 
-    run_back_build(&temp_dir, &commit_sha)?;
+    run_back_build(&temp_dir, &commit_sha, build_target.as_ref())?;
 
     for ssh_user_host in ssh_user_hosts.iter() {
         info!("Deploying to {}", ssh_user_host);

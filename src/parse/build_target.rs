@@ -1,7 +1,7 @@
 use crate::validators::prelude::*;
 
 #[derive(Debug, Validator)]
-#[validator(line(char_length(trimmed_min = 1)))]
+#[validator(regex(r"^[a-z0-9\-_]{1,80}$"))]
 pub(crate) struct BuildTarget(String);
 
 impl AsRef<str> for BuildTarget {

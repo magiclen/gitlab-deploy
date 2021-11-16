@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::error::Error;
@@ -113,6 +114,7 @@ pub(crate) fn check_front_deploy(temp_dir: &TempDir) -> Result<Name, Box<dyn Err
 pub(crate) fn check_back_deploy(
     temp_dir: &TempDir,
     commit_sha: &CommitSha,
+    build_target: Option<&BuildTarget>,
 ) -> Result<(ImageName, String), Box<dyn Error>> {
     let deploy_dir = temp_dir.path().join("deploy");
 
@@ -145,14 +147,22 @@ pub(crate) fn check_back_deploy(
         Err(error) => return Err(error.into()),
     };
 
-    let docker_compose = match fs::read_to_string(deploy_dir.join("docker-compose.yml")) {
+    let docker_compose_name = if let Some(build_target) = build_target {
+        Cow::Owned(format!("docker-compose.{}.yml", build_target.as_ref()))
+    } else {
+        Cow::Borrowed("docker-compose.yml")
+    };
+
+    let docker_compose = match fs::read_to_string(deploy_dir.join(docker_compose_name.as_ref())) {
         Ok(mut docker_compose) => {
             docker_compose.trim_in_place();
 
             docker_compose
         }
         Err(ref error) if error.kind() == ErrorKind::NotFound => {
-            return Err("deploy/docker-compose.yml cannot be found in the project.".into());
+            return Err(
+                format!("deploy/{} cannot be found in the project.", docker_compose_name).into()
+            );
         }
         Err(error) => return Err(error.into()),
     };
@@ -162,7 +172,11 @@ pub(crate) fn check_back_deploy(
             .unwrap();
 
     if !regex.is_match(docker_compose.as_str()) {
-        return Err("deploy/docker-compose.yml or deploy/image-name.txt cannot match".into());
+        return Err(format!(
+            "deploy/{} or deploy/image-name.txt cannot match",
+            docker_compose_name
+        )
+        .into());
     }
 
     let docker_compose = regex
@@ -175,12 +189,8 @@ pub(crate) fn check_back_deploy(
 pub(crate) fn check_back_deploy_via_ssh<S: AsRef<str>>(
     ssh_user_host: &SshUserHost,
     ssh_root: S,
-) -> Result<ImageName, Box<dyn Error>> {
+) -> Result<(), Box<dyn Error>> {
     let deploy_path = format!("{}/deploy", ssh_root.as_ref());
-
-    if !check_file_exist(ssh_user_host, format!("{}/build.sh", deploy_path.as_str()))? {
-        return Err("deploy/build.sh cannot be found in the project.".into());
-    }
 
     if !check_file_exist(ssh_user_host, format!("{}/develop-up.sh", deploy_path.as_str()))? {
         return Err("deploy/develop-up.sh cannot be found in the project.".into());
@@ -190,84 +200,7 @@ pub(crate) fn check_back_deploy_via_ssh<S: AsRef<str>>(
         return Err("deploy/develop-down.sh cannot be found in the project.".into());
     }
 
-    let image_name = {
-        let mut command = create_ssh_command(
-            ssh_user_host,
-            format!("cat {DEPLOY_PATH:?}/image-name.txt", DEPLOY_PATH = deploy_path),
-        );
-
-        command.stdout(Stdio::piped());
-        command.stderr(Stdio::piped());
-
-        let output = command.execute_output()?;
-
-        match output.status.code().unwrap_or(-1) {
-            0 => {
-                let mut image_name = String::from_utf8(output.stdout)?;
-
-                image_name.trim_in_place();
-
-                match ImageName::parse_string(image_name) {
-                    Ok(image_name) => image_name,
-                    Err(_) => {
-                        return Err("deploy/image-name.txt is not correct".into());
-                    }
-                }
-            }
-            1 => return Err("deploy/image-name.txt cannot be found in the project.".into()),
-            _ => {
-                String::from_utf8_lossy(output.stderr.as_slice()).split('\n').for_each(|line| {
-                    if !line.is_empty() {
-                        error!("{}", line);
-                    }
-                });
-
-                return Err("deploy/image-name.txt cannot be found in the project.".into());
-            }
-        }
-    };
-
-    let docker_compose = {
-        let mut command = create_ssh_command(
-            ssh_user_host,
-            format!("cat {DEPLOY_PATH:?}/docker-compose.yml", DEPLOY_PATH = deploy_path),
-        );
-
-        command.stdout(Stdio::piped());
-        command.stderr(Stdio::piped());
-
-        let output = command.execute_output()?;
-
-        match output.status.code().unwrap_or(-1) {
-            0 => {
-                let mut docker_compose = String::from_utf8(output.stdout)?;
-
-                docker_compose.trim_in_place();
-
-                docker_compose
-            }
-            1 => return Err("deploy/docker-compose.yml cannot be found in the project.".into()),
-            _ => {
-                String::from_utf8_lossy(output.stderr.as_slice()).split('\n').for_each(|line| {
-                    if !line.is_empty() {
-                        error!("{}", line);
-                    }
-                });
-
-                return Err("deploy/docker-compose.yml cannot be found in the project.".into());
-            }
-        }
-    };
-
-    let regex =
-        Regex::new(&format!("(?m)^ *image: +{IMAGE_NAME} *$", IMAGE_NAME = image_name.as_ref()))
-            .unwrap();
-
-    if !regex.is_match(docker_compose.as_str()) {
-        return Err("deploy/docker-compose.yml or deploy/image-name.txt cannot match".into());
-    }
-
-    Ok(image_name)
+    Ok(())
 }
 
 pub(crate) fn run_front_build(
@@ -292,10 +225,15 @@ pub(crate) fn run_front_build(
 pub(crate) fn run_back_build(
     temp_dir: &TempDir,
     commit_sha: &CommitSha,
+    build_target: Option<&BuildTarget>,
 ) -> Result<(), Box<dyn Error>> {
     info!("Running deploy/build.sh");
 
     let mut command: Command = command_args!("bash", "deploy/build.sh", commit_sha.get_short_sha());
+
+    if let Some(build_target) = build_target {
+        command.arg(build_target.as_ref());
+    }
 
     command.current_dir(temp_dir.path());
 

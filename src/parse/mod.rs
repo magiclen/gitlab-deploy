@@ -156,13 +156,28 @@ pub(crate) fn parse_build_target(matches: &ArgMatches<'_>) -> BuildTarget {
     }
 }
 
+pub(crate) fn parse_build_target_allow_null(matches: &ArgMatches<'_>) -> Option<BuildTarget> {
+    match matches.value_of("BUILD_TARGET") {
+        Some(target) => {
+            match BuildTarget::parse_str(target) {
+                Ok(target) => Some(target),
+                Err(_) => {
+                    error!("{:?} is not a correct build target.", target);
+                    process::exit(-2);
+                }
+            }
+        }
+        None => None,
+    }
+}
+
 pub(crate) fn parse_phase(matches: &ArgMatches<'_>) -> Phase {
     match matches.value_of("PHASE") {
         Some(target) => {
             match Phase::parse_str(target) {
                 Ok(target) => target,
                 Err(_) => {
-                    error!("{:?} is not a correct build target.", target);
+                    error!("{:?} is not a correct parse.", target);
                     process::exit(-2);
                 }
             }
