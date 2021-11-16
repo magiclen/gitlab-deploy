@@ -76,6 +76,8 @@ fn main() {
                     error!("{}", line);
                 }
             });
+            
+            process::exit(-3);
         }
     } else if let Some(sub_matches) = matches.subcommand_matches("frontend-deploy") {
         info!("Running {} {} for front-end deployment", APP_NAME, CARGO_PKG_VERSION);
@@ -86,6 +88,8 @@ fn main() {
                     error!("{}", line);
                 }
             });
+            
+            process::exit(-3);
         }
     } else if let Some(sub_matches) = matches.subcommand_matches("frontend-control") {
         info!("Running {} {} for front-end control", APP_NAME, CARGO_PKG_VERSION);
@@ -96,6 +100,8 @@ fn main() {
                     error!("{}", line);
                 }
             });
+            
+            process::exit(-3);
         }
     } else if let Some(sub_matches) = matches.subcommand_matches("backend-develop") {
         info!("Running {} {} for back-end development", APP_NAME, CARGO_PKG_VERSION);
@@ -106,6 +112,8 @@ fn main() {
                     error!("{}", line);
                 }
             });
+            
+            process::exit(-3);
         }
     } else if let Some(sub_matches) = matches.subcommand_matches("backend-deploy") {
         info!("Running {} {} for back-end deployment", APP_NAME, CARGO_PKG_VERSION);
@@ -116,6 +124,8 @@ fn main() {
                     error!("{}", line);
                 }
             });
+            
+            process::exit(-3);
         }
     } else if let Some(sub_matches) = matches.subcommand_matches("backend-control") {
         info!("Running {} {} for back-end control", APP_NAME, CARGO_PKG_VERSION);
@@ -126,6 +136,8 @@ fn main() {
                     error!("{}", line);
                 }
             });
+            
+            process::exit(-3);
         }
     } else {
         error!("You need to input a subcommand!");
