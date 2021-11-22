@@ -99,7 +99,7 @@ pub(crate) fn front_control(matches: &ArgMatches) -> Result<(), Box<dyn Error>> 
         let public_name = tarball.strip_suffix(".tar.zst").unwrap();
 
         let ssh_html_path = format!(
-            "{SSH_HOME}/{SERVICE_DIRECTORY}/{PUBLIC_NAME}/html",
+            "{SSH_HOME}/{SERVICE_DIRECTORY}/www/{PUBLIC_NAME}/html",
             SSH_HOME = ssh_home,
             SERVICE_DIRECTORY = SERVICE_DIRECTORY,
             PUBLIC_NAME = public_name

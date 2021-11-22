@@ -44,7 +44,7 @@ pub(crate) fn front_develop(matches: &ArgMatches) -> Result<(), Box<dyn Error>> 
         let mut ssh_home = get_ssh_home(&ssh_user_host)?;
 
         ssh_home.write_fmt(format_args!(
-            "/{SERVICE_DIRECTORY}/{PUBLIC_NAME}",
+            "/{SERVICE_DIRECTORY}/www/{PUBLIC_NAME}",
             SERVICE_DIRECTORY = SERVICE_DIRECTORY,
             PUBLIC_NAME = public_name.as_ref()
         ))?;
