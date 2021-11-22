@@ -34,6 +34,8 @@ mod back_develop;
 mod front_control;
 mod front_deploy;
 mod front_develop;
+mod simple_control;
+mod simple_deploy;
 
 use std::env;
 use std::process;
@@ -47,6 +49,8 @@ use back_develop::*;
 use front_control::*;
 use front_deploy::*;
 use front_develop::*;
+use simple_control::*;
+use simple_deploy::*;
 
 const APP_NAME: &str = "gitlab-deploy";
 const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -139,6 +143,30 @@ fn main() {
 
             process::exit(-3);
         }
+    } else if let Some(sub_matches) = matches.subcommand_matches("simple-deploy") {
+        info!("Running {} {} for simple deployment", APP_NAME, CARGO_PKG_VERSION);
+
+        if let Err(err) = simple_deploy(sub_matches) {
+            err.to_string().split('\n').for_each(|line| {
+                if !line.is_empty() {
+                    error!("{}", line);
+                }
+            });
+
+            process::exit(-3);
+        }
+    } else if let Some(sub_matches) = matches.subcommand_matches("simple-control") {
+        info!("Running {} {} for simple control", APP_NAME, CARGO_PKG_VERSION);
+
+        if let Err(err) = simple_control(sub_matches) {
+            err.to_string().split('\n').for_each(|line| {
+                if !line.is_empty() {
+                    error!("{}", line);
+                }
+            });
+
+            process::exit(-3);
+        }
     } else {
         error!("You need to input a subcommand!");
         process::exit(-1);
@@ -157,6 +185,8 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             "backend-develop    --gitlab-project-id 123 --gitlab-project-path website-api                     --project-name website --reference develop",
             "backend-deploy     --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test",
             "backend-control    --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test --command up",
+            "simple-deploy      --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test",
+            "simple-control     --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test sudo /usr/local/bin/apply-nginx.sh dev.env",
         )));
 
     let arg_gitlab_project_id = Arg::with_name("GITLAB_PROJECT_ID")
@@ -273,7 +303,16 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         .env("DEVELOP_SSH_HOST")
         .help("Sets the SSH user, host and the optional port for development");
 
+    let arg_command_arg =
+        Arg::with_name("COMMAND").required(true).help("Command to execute").multiple(true);
+
+    let arg_inject_project_directory = Arg::with_name("INJECT_PROJECT_DIRECTORY")
+        .display_order(1000)
+        .long("inject-project-directory")
+        .help("Injects the project directory as the first argument to the command");
+
     let front_develop = SubCommand::with_name("frontend-develop")
+        .display_order(10)
         .about("Fetches the project via GitLab API and then build it and use the public static files on a development host")
         .args(&[
             arg_gitlab_project_id.clone(),
@@ -285,6 +324,7 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         ]);
 
     let front_deploy = SubCommand::with_name("frontend-deploy")
+        .display_order(11)
         .about("Fetches the project via GitLab API and then build it and deploy the archive of public static files on multiple hosts according to the phase")
         .args(&[
             arg_gitlab_project_id.clone(),
@@ -298,6 +338,7 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         ]);
 
     let front_control = SubCommand::with_name("frontend-control")
+        .display_order(12)
         .about("Controls the project on multiple hosts according to the phase")
         .args(&[
             arg_gitlab_project_id.clone(),
@@ -308,6 +349,7 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         ]);
 
     let back_develop = SubCommand::with_name("backend-develop")
+        .display_order(13)
         .about("Fetches the project via Git and checkout to a specific branch and then start up the service on a development host")
         .args(&[
             arg_gitlab_project_id.clone(),
@@ -319,6 +361,7 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         ]);
 
     let back_deploy = SubCommand::with_name("backend-deploy")
+        .display_order(14)
         .about("Fetches the project via GitLab API and then build it and deploy the docker image on multiple hosts according to the phase")
         .args(&[
             arg_gitlab_project_id.clone(),
@@ -332,6 +375,7 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         ]);
 
     let back_control = SubCommand::with_name("backend-control")
+        .display_order(15)
         .about("Controls the project on multiple hosts according to the phase")
         .args(&[
             arg_gitlab_project_id.clone(),
@@ -342,6 +386,34 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_command.clone(),
         ]);
 
+    let simple_deploy = SubCommand::with_name("simple-deploy")
+        .display_order(16)
+        .about("Fetches the project via GitLab API and deploy the project files on multiple hosts according to the phase")
+        .args(&[
+            arg_gitlab_project_id.clone(),
+            arg_commit_sha.clone(),
+            arg_project_name.clone(),
+            arg_reference_name.clone(),
+            arg_phase.clone(),
+            arg_gitlab_api_url_prefix.clone(),
+            arg_gitlab_api_token.clone(),
+        ]);
+
+    let simple_control = SubCommand::with_name("simple-control")
+        .display_order(17)
+        .about("Controls the project on multiple hosts according to the phase")
+        .args(&[
+            arg_gitlab_project_id.clone(),
+            arg_commit_sha.clone(),
+            arg_project_name.clone(),
+            arg_reference_name.clone(),
+            arg_phase.clone(),
+            arg_gitlab_api_url_prefix.clone(),
+            arg_gitlab_api_token.clone(),
+            arg_inject_project_directory.clone(),
+            arg_command_arg.clone(),
+        ]);
+
     let app = app.subcommands([
         front_develop,
         front_deploy,
@@ -349,6 +421,8 @@ fn get_matches<'a>() -> ArgMatches<'a> {
         back_develop,
         back_deploy,
         back_control,
+        simple_deploy,
+        simple_control,
     ]);
 
     app.after_help("Enjoy it! https://magiclen.org").get_matches()

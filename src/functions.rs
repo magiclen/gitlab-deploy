@@ -5,6 +5,7 @@ use std::error::Error;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, ErrorKind};
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use crate::tempfile::TempDir;
@@ -388,6 +389,47 @@ pub(crate) fn check_directory_exist<S: AsRef<str>>(
     });
 
     Err(format!("Cannot check the existence of {:?} of {}", path.as_ref(), ssh_user_host).into())
+}
+
+pub(crate) fn download_archive(
+    temp_dir: &TempDir,
+    api_url_prefix: ApiUrlPrefix,
+    api_token: ApiToken,
+    project_id: u64,
+    commit_sha: &CommitSha,
+) -> Result<PathBuf, Box<dyn Error>> {
+    let archive_url = format!(
+        "{GITLAB_API_URL_PREFIX}/projects/{PROJECT_ID}/repository/archive.tar?sha={COMMIT_SHA}",
+        GITLAB_API_URL_PREFIX = api_url_prefix.as_ref(),
+        PROJECT_ID = project_id,
+        COMMIT_SHA = commit_sha.as_ref()
+    );
+
+    let archive_save_path = temp_dir.path().join("archive.tar");
+
+    info!("Fetching project from {:?}", archive_url);
+
+    {
+        let mut command = command_args!(
+            "wget",
+            "--no-check-certificate",
+            archive_url,
+            "--header",
+            format!("PRIVATE-TOKEN: {GITLAB_API_TOKEN}", GITLAB_API_TOKEN = api_token.as_ref()),
+            "-O",
+            archive_save_path,
+        );
+
+        let output = command.execute()?;
+
+        if let Some(0) = output {
+            info!("Fetched successfully.");
+        } else {
+            return Err("Fetched unsuccessfully!".into());
+        }
+    }
+
+    Ok(archive_save_path)
 }
 
 pub(crate) fn download_and_extract_archive(
