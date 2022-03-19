@@ -1,11 +1,11 @@
 use std::error::Error;
 use std::fmt::Write as FmtWrite;
 
-use execute::Execute;
+use execute::{command_args, Execute};
 
-use crate::clap::ArgMatches;
+use clap::ArgMatches;
 
-use crate::tempfile::tempdir;
+use tempfile::tempdir;
 
 use crate::constants::*;
 use crate::functions::*;

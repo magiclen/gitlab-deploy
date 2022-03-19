@@ -4,9 +4,9 @@ use std::fs::File;
 
 use execute::Execute;
 
-use crate::clap::ArgMatches;
+use clap::ArgMatches;
 
-use crate::tempfile::tempdir;
+use tempfile::tempdir;
 
 use crate::constants::*;
 use crate::functions::*;

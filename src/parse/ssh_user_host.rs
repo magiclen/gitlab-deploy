@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
-use crate::regex::Regex;
+use regex::Regex;
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub(crate) struct SshUserHost {

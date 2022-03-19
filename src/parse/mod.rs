@@ -13,9 +13,9 @@ mod ssh_user_host;
 
 use std::process;
 
-use crate::clap::ArgMatches;
+use clap::ArgMatches;
 
-use crate::validators::prelude::*;
+use validators::prelude::*;
 
 pub(crate) use api_token::*;
 pub(crate) use api_url_prefix::*;
@@ -48,7 +48,7 @@ pub(crate) fn parse_parse_id(matches: &ArgMatches) -> u64 {
     }
 }
 
-pub(crate) fn parse_commit_sha(matches: &ArgMatches<'_>) -> CommitSha {
+pub(crate) fn parse_commit_sha(matches: &ArgMatches) -> CommitSha {
     match matches.value_of("COMMIT_SHA") {
         Some(sha) => {
             match CommitSha::parse_str(sha) {
@@ -66,7 +66,7 @@ pub(crate) fn parse_commit_sha(matches: &ArgMatches<'_>) -> CommitSha {
     }
 }
 
-pub(crate) fn parse_project_name(matches: &ArgMatches<'_>) -> Name {
+pub(crate) fn parse_project_name(matches: &ArgMatches) -> Name {
     match matches.value_of("PROJECT_NAME") {
         Some(project_name) => {
             match Name::parse_str(project_name) {
@@ -84,7 +84,7 @@ pub(crate) fn parse_project_name(matches: &ArgMatches<'_>) -> Name {
     }
 }
 
-pub(crate) fn parse_reference_name(matches: &ArgMatches<'_>) -> Name {
+pub(crate) fn parse_reference_name(matches: &ArgMatches) -> Name {
     match matches.value_of("REFERENCE_NAME") {
         Some(reference_name) => {
             match Name::parse_str(reference_name) {
@@ -102,7 +102,7 @@ pub(crate) fn parse_reference_name(matches: &ArgMatches<'_>) -> Name {
     }
 }
 
-pub(crate) fn parse_project_path(matches: &ArgMatches<'_>) -> ProjectPath {
+pub(crate) fn parse_project_path(matches: &ArgMatches) -> ProjectPath {
     match matches.value_of("GITLAB_PROJECT_PATH") {
         Some(project_path) => {
             match ProjectPath::parse_str(project_path) {
@@ -120,7 +120,7 @@ pub(crate) fn parse_project_path(matches: &ArgMatches<'_>) -> ProjectPath {
     }
 }
 
-pub(crate) fn parse_reference(matches: &ArgMatches<'_>) -> Reference {
+pub(crate) fn parse_reference(matches: &ArgMatches) -> Reference {
     match matches.value_of("REFERENCE") {
         Some(reference) => {
             match Reference::parse_str(reference) {
@@ -138,7 +138,7 @@ pub(crate) fn parse_reference(matches: &ArgMatches<'_>) -> Reference {
     }
 }
 
-pub(crate) fn parse_build_target(matches: &ArgMatches<'_>) -> BuildTarget {
+pub(crate) fn parse_build_target(matches: &ArgMatches) -> BuildTarget {
     match matches.value_of("BUILD_TARGET") {
         Some(target) => {
             match BuildTarget::parse_str(target) {
@@ -156,7 +156,7 @@ pub(crate) fn parse_build_target(matches: &ArgMatches<'_>) -> BuildTarget {
     }
 }
 
-pub(crate) fn parse_build_target_allow_null(matches: &ArgMatches<'_>) -> Option<BuildTarget> {
+pub(crate) fn parse_build_target_allow_null(matches: &ArgMatches) -> Option<BuildTarget> {
     match matches.value_of("BUILD_TARGET") {
         Some(target) => {
             match BuildTarget::parse_str(target) {
@@ -171,7 +171,7 @@ pub(crate) fn parse_build_target_allow_null(matches: &ArgMatches<'_>) -> Option<
     }
 }
 
-pub(crate) fn parse_phase(matches: &ArgMatches<'_>) -> Phase {
+pub(crate) fn parse_phase(matches: &ArgMatches) -> Phase {
     match matches.value_of("PHASE") {
         Some(target) => {
             match Phase::parse_str(target) {
@@ -189,7 +189,7 @@ pub(crate) fn parse_phase(matches: &ArgMatches<'_>) -> Phase {
     }
 }
 
-pub(crate) fn parse_command(matches: &ArgMatches<'_>) -> Command {
+pub(crate) fn parse_command(matches: &ArgMatches) -> Command {
     match matches.value_of("COMMAND") {
         Some(command) => {
             match Command::parse_str(command) {
@@ -207,7 +207,7 @@ pub(crate) fn parse_command(matches: &ArgMatches<'_>) -> Command {
     }
 }
 
-pub(crate) fn parse_api_url_prefix(matches: &ArgMatches<'_>) -> ApiUrlPrefix {
+pub(crate) fn parse_api_url_prefix(matches: &ArgMatches) -> ApiUrlPrefix {
     match matches.value_of("GITLAB_API_URL_PREFIX") {
         Some(api_url_prefix) => {
             match ApiUrlPrefix::parse_str(api_url_prefix) {
@@ -225,7 +225,7 @@ pub(crate) fn parse_api_url_prefix(matches: &ArgMatches<'_>) -> ApiUrlPrefix {
     }
 }
 
-pub(crate) fn parse_api_token(matches: &ArgMatches<'_>) -> ApiToken {
+pub(crate) fn parse_api_token(matches: &ArgMatches) -> ApiToken {
     match matches.value_of("GITLAB_API_TOKEN") {
         Some(api_token) => {
             match ApiToken::parse_str(api_token) {
@@ -243,7 +243,7 @@ pub(crate) fn parse_api_token(matches: &ArgMatches<'_>) -> ApiToken {
     }
 }
 
-pub(crate) fn parse_ssh_url_prefix(matches: &ArgMatches<'_>) -> SshUrlPrefix {
+pub(crate) fn parse_ssh_url_prefix(matches: &ArgMatches) -> SshUrlPrefix {
     match matches.value_of("GITLAB_SSH_URL_PREFIX") {
         Some(ssh_url_prefix) => {
             match SshUrlPrefix::parse_str(ssh_url_prefix) {
@@ -261,7 +261,7 @@ pub(crate) fn parse_ssh_url_prefix(matches: &ArgMatches<'_>) -> SshUrlPrefix {
     }
 }
 
-pub(crate) fn parse_ssh_user_host(matches: &ArgMatches<'_>) -> SshUserHost {
+pub(crate) fn parse_ssh_user_host(matches: &ArgMatches) -> SshUserHost {
     match matches.value_of("DEVELOP_SSH_USR_HOST") {
         Some(ssh_user_host) => {
             match SshUserHost::parse_str(ssh_user_host) {

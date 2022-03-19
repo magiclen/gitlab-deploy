@@ -1,5 +1,5 @@
-use crate::slash_formatter::delete_end_slash;
-use crate::validators::prelude::*;
+use slash_formatter::delete_end_slash;
+use validators::prelude::*;
 
 use validators_prelude::url;
 

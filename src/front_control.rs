@@ -4,9 +4,9 @@ use std::process::Stdio;
 
 use execute::Execute;
 
-use crate::clap::ArgMatches;
+use clap::ArgMatches;
 
-use crate::trim_in_place::TrimInPlace;
+use trim_in_place::TrimInPlace;
 
 use crate::constants::*;
 use crate::functions::*;

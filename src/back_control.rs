@@ -5,7 +5,7 @@ use std::process::Stdio;
 use execute::Execute;
 use trim_in_place::TrimInPlace;
 
-use crate::clap::ArgMatches;
+use clap::ArgMatches;
 
 use crate::constants::*;
 use crate::functions::*;

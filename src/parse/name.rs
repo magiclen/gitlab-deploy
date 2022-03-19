@@ -1,4 +1,4 @@
-use crate::validators::prelude::*;
+use validators::prelude::*;
 
 #[derive(Debug, Validator)]
 #[validator(regex(r"^[a-zA-Z0-9\-_.]{1,80}$"))]

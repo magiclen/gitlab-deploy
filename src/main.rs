@@ -1,28 +1,5 @@
 #[macro_use]
-extern crate concat_with;
-extern crate clap;
-extern crate terminal_size;
-
-extern crate once_cell;
-extern crate regex;
-
-#[macro_use]
-extern crate validators_derive;
-extern crate validators;
-
-extern crate chrono;
-extern crate scanner_rust;
-extern crate slash_formatter;
-extern crate tempfile;
-extern crate trim_in_place;
-
-#[macro_use]
-extern crate execute;
-
-#[macro_use]
 extern crate log;
-
-extern crate simplelog;
 
 mod constants;
 mod functions;
@@ -40,8 +17,10 @@ mod simple_deploy;
 use std::env;
 use std::process;
 
-use clap::{App, Arg, ArgMatches, SubCommand};
+use clap::{Arg, ArgMatches, Command};
 use terminal_size::terminal_size;
+
+use concat_with::concat_line;
 
 use back_control::*;
 use back_deploy::*;
@@ -173,9 +152,9 @@ fn main() {
     }
 }
 
-fn get_matches<'a>() -> ArgMatches<'a> {
-    let app = App::new(APP_NAME)
-        .set_term_width(terminal_size().map(|(width, _)| width.0 as usize).unwrap_or(0))
+fn get_matches() -> ArgMatches {
+    let app = Command::new(APP_NAME)
+        .term_width(terminal_size().map(|(width, _)| width.0 as usize).unwrap_or(0))
         .version(CARGO_PKG_VERSION)
         .author(CARGO_PKG_AUTHORS)
         .about(concat!("GitLab Deploy is used for deploying software projects to multiple hosts during different phases\n\nEXAMPLES:\n", concat_line!(prefix "gitlab-deploy ",
@@ -189,131 +168,131 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             "simple-control     --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test sudo /usr/local/bin/apply-nginx.sh dev.env",
         )));
 
-    let arg_gitlab_project_id = Arg::with_name("GITLAB_PROJECT_ID")
+    let arg_gitlab_project_id = Arg::new("GITLAB_PROJECT_ID")
         .display_order(0)
         .required(true)
         .long("gitlab-project-id")
         .visible_aliases(&["project-id", "id"])
         .takes_value(true)
         .env("CI_PROJECT_ID")
-        .help("Sets the ID on GitLab of this project");
+        .help("Set the ID on GitLab of this project");
 
-    let arg_commit_sha = Arg::with_name("COMMIT_SHA")
+    let arg_commit_sha = Arg::new("COMMIT_SHA")
         .display_order(1)
         .required(true)
         .long("commit-sha")
         .visible_aliases(&["sha"])
         .takes_value(true)
         .env("CI_COMMIT_SHA")
-        .help("Sets the sha of the commit");
+        .help("Set the sha of the commit");
 
-    let arg_project_name = Arg::with_name("PROJECT_NAME")
+    let arg_project_name = Arg::new("PROJECT_NAME")
         .display_order(2)
         .required(true)
         .long("project-name")
         .takes_value(true)
         .env("CI_PROJECT_NAME")
-        .help("Sets the name of this project");
+        .help("Set the name of this project");
 
-    let arg_reference_name = Arg::with_name("REFERENCE_NAME")
+    let arg_reference_name = Arg::new("REFERENCE_NAME")
         .display_order(3)
         .required(true)
         .long("reference-name")
         .takes_value(true)
         .env("CI_COMMIT_REF_NAME")
-        .help("Sets the reference name of the commit");
+        .help("Set the reference name of the commit");
 
-    let arg_gitlab_project_path = Arg::with_name("GITLAB_PROJECT_PATH")
+    let arg_gitlab_project_path = Arg::new("GITLAB_PROJECT_PATH")
         .display_order(4)
         .required(true)
         .long("gitlab-project-path")
         .visible_aliases(&["project-path"])
         .takes_value(true)
         .env("CI_PROJECT_PATH")
-        .help("Sets the path of this project on GitLab");
+        .help("Set the path of this project on GitLab");
 
-    let arg_reference = Arg::with_name("REFERENCE")
+    let arg_reference = Arg::new("REFERENCE")
         .display_order(10)
         .required(true)
         .long("reference")
         .visible_aliases(&["ref"])
         .takes_value(true)
         .env("CI_COMMIT_BRANCH")
-        .help("Sets the reference of the commit");
+        .help("Set the reference of the commit");
 
-    let arg_build_target = Arg::with_name("BUILD_TARGET")
+    let arg_build_target = Arg::new("BUILD_TARGET")
         .display_order(11)
         .required(true)
         .long("build-target")
         .visible_aliases(&["target"])
         .takes_value(true)
-        .help("Sets the target of this build");
+        .help("Set the target of this build");
 
-    let arg_build_target_allow_null = Arg::with_name("BUILD_TARGET")
+    let arg_build_target_allow_null = Arg::new("BUILD_TARGET")
         .display_order(11)
         .long("build-target")
         .visible_aliases(&["target"])
         .takes_value(true)
-        .help("Sets the target of this build");
+        .help("Set the target of this build");
 
-    let arg_phase = Arg::with_name("PHASE")
+    let arg_phase = Arg::new("PHASE")
         .display_order(12)
         .required(true)
         .long("phase")
         .visible_aliases(&["phase"])
         .takes_value(true)
-        .help("Sets the phase");
+        .help("Set the phase");
 
-    let arg_command = Arg::with_name("COMMAND")
+    let arg_command = Arg::new("COMMAND")
         .display_order(13)
         .required(true)
         .long("command")
         .takes_value(true)
-        .help("Sets the command");
+        .help("Set the command");
 
-    let arg_gitlab_api_url_prefix = Arg::with_name("GITLAB_API_URL_PREFIX")
+    let arg_gitlab_api_url_prefix = Arg::new("GITLAB_API_URL_PREFIX")
         .display_order(100)
         .required(true)
         .long("gitlab-api-url-prefix")
         .visible_aliases(&["api-url-prefix"])
         .env("GITLAB_API_URL_PREFIX")
-        .help("Sets the URL prefix for GitLab APIs");
+        .help("Set the URL prefix for GitLab APIs");
 
-    let arg_gitlab_api_token = Arg::with_name("GITLAB_API_TOKEN")
+    let arg_gitlab_api_token = Arg::new("GITLAB_API_TOKEN")
         .display_order(101)
         .required(true)
         .long("gitlab-api-token")
         .visible_aliases(&["api-token"])
         .env("GITLAB_API_TOKEN")
-        .help("Sets the token of GitLab APIs");
+        .help("Set the token of GitLab APIs");
 
-    let arg_gitlab_ssh_url_prefix = Arg::with_name("GITLAB_SSH_URL_PREFIX")
+    let arg_gitlab_ssh_url_prefix = Arg::new("GITLAB_SSH_URL_PREFIX")
         .display_order(102)
         .required(true)
         .long("gitlab-ssh-url-prefix")
         .visible_aliases(&["ssh-url-prefix"])
         .env("GITLAB_SSH_URL_PREFIX")
-        .help("Sets the SSH URL prefix");
+        .help("Set the SSH URL prefix");
 
-    let arg_develop_ssh_user_host = Arg::with_name("DEVELOP_SSH_USR_HOST")
+    let arg_develop_ssh_user_host = Arg::new("DEVELOP_SSH_USR_HOST")
         .display_order(103)
         .required(true)
         .long("develop-ssh-user-host")
         .visible_aliases(&["ssh-user-host"])
         .env("DEVELOP_SSH_HOST")
-        .help("Sets the SSH user, host and the optional port for development");
+        .help("Set the SSH user, host and the optional port for development");
 
     let arg_command_arg =
-        Arg::with_name("COMMAND").required(true).help("Command to execute").multiple(true);
+        Arg::new("COMMAND").required(true).help("Command to execute").multiple_values(true);
 
-    let arg_inject_project_directory = Arg::with_name("INJECT_PROJECT_DIRECTORY")
+    let arg_inject_project_directory = Arg::new("INJECT_PROJECT_DIRECTORY")
         .display_order(1000)
         .long("inject-project-directory")
-        .help("Injects the project directory as the first argument to the command");
+        .help("Inject the project directory as the first argument to the command");
 
-    let front_develop = SubCommand::with_name("frontend-develop")
+    let front_develop = Command::new("frontend-develop")
         .display_order(10)
-        .about("Fetches the project via GitLab API and then build it and use the public static files on a development host")
+        .about("Fetch the project via GitLab API and then build it and use the public static files on a development host")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),
@@ -323,9 +302,9 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_develop_ssh_user_host.clone(),
         ]);
 
-    let front_deploy = SubCommand::with_name("frontend-deploy")
+    let front_deploy = Command::new("frontend-deploy")
         .display_order(11)
-        .about("Fetches the project via GitLab API and then build it and deploy the archive of public static files on multiple hosts according to the phase")
+        .about("Fetch the project via GitLab API and then build it and deploy the archive of public static files on multiple hosts according to the phase")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),
@@ -337,9 +316,9 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_gitlab_api_token.clone(),
         ]);
 
-    let front_control = SubCommand::with_name("frontend-control")
+    let front_control = Command::new("frontend-control")
         .display_order(12)
-        .about("Controls the project on multiple hosts according to the phase")
+        .about("Control the project on multiple hosts according to the phase")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),
@@ -348,9 +327,9 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_phase.clone(),
         ]);
 
-    let back_develop = SubCommand::with_name("backend-develop")
+    let back_develop = Command::new("backend-develop")
         .display_order(13)
-        .about("Fetches the project via Git and checkout to a specific branch and then start up the service on a development host")
+        .about("Fetch the project via Git and checkout to a specific branch and then start up the service on a development host")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_project_name.clone(),
@@ -360,9 +339,9 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_develop_ssh_user_host.clone(),
         ]);
 
-    let back_deploy = SubCommand::with_name("backend-deploy")
+    let back_deploy = Command::new("backend-deploy")
         .display_order(14)
-        .about("Fetches the project via GitLab API and then build it and deploy the docker image on multiple hosts according to the phase")
+        .about("Fetch the project via GitLab API and then build it and deploy the docker image on multiple hosts according to the phase")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),
@@ -374,9 +353,9 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_gitlab_api_token.clone(),
         ]);
 
-    let back_control = SubCommand::with_name("backend-control")
+    let back_control = Command::new("backend-control")
         .display_order(15)
-        .about("Controls the project on multiple hosts according to the phase")
+        .about("Control the project on multiple hosts according to the phase")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),
@@ -386,9 +365,9 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_command.clone(),
         ]);
 
-    let simple_deploy = SubCommand::with_name("simple-deploy")
+    let simple_deploy = Command::new("simple-deploy")
         .display_order(16)
-        .about("Fetches the project via GitLab API and deploy the project files on multiple hosts according to the phase")
+        .about("Fetch the project via GitLab API and deploy the project files on multiple hosts according to the phase")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),
@@ -399,9 +378,9 @@ fn get_matches<'a>() -> ArgMatches<'a> {
             arg_gitlab_api_token.clone(),
         ]);
 
-    let simple_control = SubCommand::with_name("simple-control")
+    let simple_control = Command::new("simple-control")
         .display_order(17)
-        .about("Controls the project on multiple hosts according to the phase")
+        .about("Control the project on multiple hosts according to the phase")
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),

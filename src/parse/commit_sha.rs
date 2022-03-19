@@ -1,4 +1,4 @@
-use crate::validators::prelude::*;
+use validators::prelude::*;
 
 #[derive(Debug, Validator)]
 #[validator(regex("^[a-zA-Z0-9]{40}$"))]

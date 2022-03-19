@@ -3,7 +3,7 @@ use std::fmt::Write as FmtWrite;
 
 use execute::Execute;
 
-use crate::clap::{ArgMatches, Values};
+use clap::{ArgMatches, Values};
 
 use crate::constants::*;
 use crate::functions::*;
