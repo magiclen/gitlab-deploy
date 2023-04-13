@@ -1,15 +1,10 @@
-use std::error::Error;
-use std::fmt::Write as FmtWrite;
-
-use execute::Execute;
+use std::{error::Error, fmt::Write as FmtWrite};
 
 use clap::ArgMatches;
-
+use execute::Execute;
 use tempfile::tempdir;
 
-use crate::constants::*;
-use crate::functions::*;
-use crate::parse::*;
+use crate::{constants::*, functions::*, parse::*};
 
 pub(crate) fn front_deploy(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     check_zstd()?;
@@ -84,7 +79,8 @@ pub(crate) fn front_deploy(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
                 // do nothing
             } else {
                 return Err(format!(
-                    "Cannot create the directory {:?} for storing the archive of public static files.",
+                    "Cannot create the directory {:?} for storing the archive of public static \
+                     files.",
                     ssh_project
                 )
                 .into());

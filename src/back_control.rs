@@ -1,15 +1,10 @@
-use std::error::Error;
-use std::fmt::Write as FmtWrite;
-use std::process::Stdio;
+use std::{error::Error, fmt::Write as FmtWrite, process::Stdio};
 
+use clap::ArgMatches;
 use execute::Execute;
 use trim_in_place::TrimInPlace;
 
-use clap::ArgMatches;
-
-use crate::constants::*;
-use crate::functions::*;
-use crate::parse::*;
+use crate::{constants::*, functions::*, parse::*};
 
 pub(crate) fn back_control(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     check_ssh()?;
@@ -97,15 +92,20 @@ pub(crate) fn back_control(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
 
         {
-            let mut command =
-                create_ssh_command(ssh_user_host, format!("cd {SSH_PROJECT:?} && echo \"{TIMESTAMP} {COMMAND} {REFERENCE_NAME}-{SHORT_SHA}\" >> {SSH_PROJECT:?}/../control.log && {COMMAND_STR}",
+            let mut command = create_ssh_command(
+                ssh_user_host,
+                format!(
+                    "cd {SSH_PROJECT:?} && echo \"{TIMESTAMP} {COMMAND} \
+                     {REFERENCE_NAME}-{SHORT_SHA}\" >> {SSH_PROJECT:?}/../control.log && \
+                     {COMMAND_STR}",
                     SSH_PROJECT = ssh_project,
                     REFERENCE_NAME = reference_name.as_ref(),
                     TIMESTAMP = current_timestamp(),
                     SHORT_SHA = commit_sha.get_short_sha(),
                     COMMAND = command.as_str(),
                     COMMAND_STR = command_str,
-                ));
+                ),
+            );
 
             let output = command.execute_output()?;
 
@@ -115,12 +115,16 @@ pub(crate) fn back_control(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
 
         if matches!(command, Command::Up | Command::DownAndUp) {
-            let mut command =
-                create_ssh_command(ssh_user_host, format!("cd {SSH_PROJECT:?} && echo \"{REFERENCE_NAME}-{SHORT_SHA}\" > {SSH_PROJECT:?}/../last-up",
-                      SSH_PROJECT = ssh_project,
-                      REFERENCE_NAME = reference_name.as_ref(),
-                      SHORT_SHA = commit_sha.get_short_sha(),
-                ));
+            let mut command = create_ssh_command(
+                ssh_user_host,
+                format!(
+                    "cd {SSH_PROJECT:?} && echo \"{REFERENCE_NAME}-{SHORT_SHA}\" > \
+                     {SSH_PROJECT:?}/../last-up",
+                    SSH_PROJECT = ssh_project,
+                    REFERENCE_NAME = reference_name.as_ref(),
+                    SHORT_SHA = commit_sha.get_short_sha(),
+                ),
+            );
 
             let status = command.execute()?;
 

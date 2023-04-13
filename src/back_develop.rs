@@ -1,13 +1,9 @@
-use std::error::Error;
-use std::fmt::Write as FmtWrite;
-
-use execute::Execute;
+use std::{error::Error, fmt::Write as FmtWrite};
 
 use clap::ArgMatches;
+use execute::Execute;
 
-use crate::constants::*;
-use crate::functions::*;
-use crate::parse::*;
+use crate::{constants::*, functions::*, parse::*};
 
 pub(crate) fn back_develop(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     check_ssh()?;
@@ -69,7 +65,8 @@ pub(crate) fn back_develop(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
             let mut command = create_ssh_command(
                 &ssh_user_host,
                 format!(
-                    "cd {SSH_ROOT:?} && git checkout {REFERENCE:?} && git pull origin {REFERENCE:?}",
+                    "cd {SSH_ROOT:?} && git checkout {REFERENCE:?} && git pull origin \
+                     {REFERENCE:?}",
                     SSH_ROOT = ssh_root,
                     REFERENCE = reference.as_ref(),
                 ),
@@ -98,11 +95,16 @@ pub(crate) fn back_develop(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
             REFERENCE = reference.as_ref(),
         );
 
-        let mut command = create_ssh_command(&ssh_user_host, format!("mkdir -p {SSH_ROOT:?} && cd {SSH_ROOT:?} && git clone --recursive {SSH_URL:?} . && git checkout {REFERENCE:?}",
-             SSH_ROOT = ssh_root,
-             SSH_URL = ssh_url,
-             REFERENCE = reference.as_ref(),
-        ));
+        let mut command = create_ssh_command(
+            &ssh_user_host,
+            format!(
+                "mkdir -p {SSH_ROOT:?} && cd {SSH_ROOT:?} && git clone --recursive {SSH_URL:?} . \
+                 && git checkout {REFERENCE:?}",
+                SSH_ROOT = ssh_root,
+                SSH_URL = ssh_url,
+                REFERENCE = reference.as_ref(),
+            ),
+        );
 
         let output = command.execute_output()?;
 

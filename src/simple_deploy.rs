@@ -1,16 +1,10 @@
-use std::error::Error;
-use std::fmt::Write as FmtWrite;
-use std::fs::File;
-
-use execute::Execute;
+use std::{error::Error, fmt::Write as FmtWrite, fs::File};
 
 use clap::ArgMatches;
-
+use execute::Execute;
 use tempfile::tempdir;
 
-use crate::constants::*;
-use crate::functions::*;
-use crate::parse::*;
+use crate::{constants::*, functions::*, parse::*};
 
 pub(crate) fn simple_deploy(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     check_ssh()?;

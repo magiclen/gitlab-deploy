@@ -14,22 +14,19 @@ mod front_develop;
 mod simple_control;
 mod simple_deploy;
 
-use std::env;
-use std::process;
-
-use clap::{Arg, ArgMatches, Command};
-use terminal_size::terminal_size;
-
-use concat_with::concat_line;
+use std::{env, process};
 
 use back_control::*;
 use back_deploy::*;
 use back_develop::*;
+use clap::{Arg, ArgMatches, Command};
+use concat_with::concat_line;
 use front_control::*;
 use front_deploy::*;
 use front_develop::*;
 use simple_control::*;
 use simple_deploy::*;
+use terminal_size::terminal_size;
 
 const APP_NAME: &str = "gitlab-deploy";
 const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -292,7 +289,10 @@ fn get_matches() -> ArgMatches {
 
     let front_develop = Command::new("frontend-develop")
         .display_order(10)
-        .about("Fetch the project via GitLab API and then build it and use the public static files on a development host")
+        .about(
+            "Fetch the project via GitLab API and then build it and use the public static files \
+             on a development host",
+        )
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),
@@ -304,7 +304,10 @@ fn get_matches() -> ArgMatches {
 
     let front_deploy = Command::new("frontend-deploy")
         .display_order(11)
-        .about("Fetch the project via GitLab API and then build it and deploy the archive of public static files on multiple hosts according to the phase")
+        .about(
+            "Fetch the project via GitLab API and then build it and deploy the archive of public \
+             static files on multiple hosts according to the phase",
+        )
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),
@@ -329,7 +332,10 @@ fn get_matches() -> ArgMatches {
 
     let back_develop = Command::new("backend-develop")
         .display_order(13)
-        .about("Fetch the project via Git and checkout to a specific branch and then start up the service on a development host")
+        .about(
+            "Fetch the project via Git and checkout to a specific branch and then start up the \
+             service on a development host",
+        )
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_project_name.clone(),
@@ -341,7 +347,10 @@ fn get_matches() -> ArgMatches {
 
     let back_deploy = Command::new("backend-deploy")
         .display_order(14)
-        .about("Fetch the project via GitLab API and then build it and deploy the docker image on multiple hosts according to the phase")
+        .about(
+            "Fetch the project via GitLab API and then build it and deploy the docker image on \
+             multiple hosts according to the phase",
+        )
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),
@@ -367,7 +376,10 @@ fn get_matches() -> ArgMatches {
 
     let simple_deploy = Command::new("simple-deploy")
         .display_order(16)
-        .about("Fetch the project via GitLab API and deploy the project files on multiple hosts according to the phase")
+        .about(
+            "Fetch the project via GitLab API and deploy the project files on multiple hosts \
+             according to the phase",
+        )
         .args(&[
             arg_gitlab_project_id.clone(),
             arg_commit_sha.clone(),

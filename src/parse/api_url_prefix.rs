@@ -1,12 +1,11 @@
 use slash_formatter::delete_end_slash;
 use validators::prelude::*;
-
 use validators_prelude::url;
 
 #[derive(Debug, Validator)]
 #[validator(http_url(local(Allow)))]
 pub(crate) struct ApiUrlPrefix {
-    url: url::Url,
+    url:      url::Url,
     #[allow(dead_code)]
     is_https: bool,
 }

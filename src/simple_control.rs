@@ -1,13 +1,9 @@
-use std::error::Error;
-use std::fmt::Write as FmtWrite;
-
-use execute::Execute;
+use std::{error::Error, fmt::Write as FmtWrite};
 
 use clap::{ArgMatches, Values};
+use execute::Execute;
 
-use crate::constants::*;
-use crate::functions::*;
-use crate::parse::*;
+use crate::{constants::*, functions::*, parse::*};
 
 #[inline]
 fn handle_command(values: Option<Values>) -> Result<Vec<&str>, &'static str> {
@@ -99,14 +95,18 @@ pub(crate) fn simple_control(matches: &ArgMatches) -> Result<(), Box<dyn Error>>
         }
 
         {
-            let mut command =
-                create_ssh_command(ssh_user_host, format!("cd {SSH_PROJECT:?} && echo \"{TIMESTAMP} {COMMAND:?} {REFERENCE_NAME}-{SHORT_SHA}\" >> {SSH_PROJECT:?}/../control.log",
+            let mut command = create_ssh_command(
+                ssh_user_host,
+                format!(
+                    "cd {SSH_PROJECT:?} && echo \"{TIMESTAMP} {COMMAND:?} \
+                     {REFERENCE_NAME}-{SHORT_SHA}\" >> {SSH_PROJECT:?}/../control.log",
                     SSH_PROJECT = ssh_project,
                     REFERENCE_NAME = reference_name.as_ref(),
                     TIMESTAMP = current_timestamp(),
                     SHORT_SHA = commit_sha.get_short_sha(),
                     COMMAND = command_string,
-                ));
+                ),
+            );
 
             let output = command.execute_output()?;
 

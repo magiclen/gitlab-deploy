@@ -1,28 +1,27 @@
-use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
-use std::env;
-use std::error::Error;
-use std::fs::{self, File};
-use std::io::{BufRead, BufReader, ErrorKind};
-use std::path::Path;
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    env,
+    error::Error,
+    fs::{self, File},
+    io::{BufRead, BufReader, ErrorKind},
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+};
 
-use tempfile::TempDir;
-
+use chrono::{
+    format::{DelayedFormat, StrftimeItems},
+    Local,
+};
 use execute::{command, command_args, Execute};
-
-use chrono::format::{DelayedFormat, StrftimeItems};
-use chrono::Local;
 use regex::Regex;
 use scanner_rust::{ScannerError, ScannerStr};
 use slash_formatter::delete_end_slash_in_place;
+use tempfile::TempDir;
 use trim_in_place::TrimInPlace;
-
 use validators::prelude::*;
 
-use crate::constants::*;
-use crate::parse::*;
+use crate::{constants::*, parse::*};
 
 pub(crate) fn check_zstd() -> Result<(), Box<dyn Error>> {
     let mut command = command!("zstd --version");
@@ -100,12 +99,12 @@ pub(crate) fn check_front_deploy(temp_dir: &TempDir) -> Result<Name, Box<dyn Err
                 Ok(public_name) => public_name,
                 Err(_) => {
                     return Err("deploy/public-name.txt is not correct".into());
-                }
+                },
             }
-        }
+        },
         Err(ref error) if error.kind() == ErrorKind::NotFound => {
             return Err("deploy/public-name.txt cannot be found in the project.".into());
-        }
+        },
         Err(error) => return Err(error.into()),
     };
 
@@ -139,12 +138,12 @@ pub(crate) fn check_back_deploy(
                 Ok(image_name) => image_name,
                 Err(_) => {
                     return Err("deploy/image-name.txt is not correct".into());
-                }
+                },
             }
-        }
+        },
         Err(ref error) if error.kind() == ErrorKind::NotFound => {
             return Err("deploy/image-name.txt cannot be found in the project.".into());
-        }
+        },
         Err(error) => return Err(error.into()),
     };
 
@@ -159,12 +158,12 @@ pub(crate) fn check_back_deploy(
             docker_compose.trim_in_place();
 
             docker_compose
-        }
+        },
         Err(ref error) if error.kind() == ErrorKind::NotFound => {
             return Err(
                 format!("deploy/{} cannot be found in the project.", docker_compose_name).into()
             );
-        }
+        },
         Err(error) => return Err(error.into()),
     };
 
@@ -489,7 +488,7 @@ pub(crate) fn find_ssh_user_hosts(
         Ok(f) => f,
         Err(ref err) if err.kind() == ErrorKind::NotFound => {
             return Err(format!("{:?} is not a supported phase!", phase.as_ref()).into());
-        }
+        },
         Err(err) => return Err(err.into()),
     };
 
@@ -522,27 +521,23 @@ pub(crate) fn find_ssh_user_hosts(
         let mut sc = ScannerStr::new(&line);
 
         let project_id = match sc.next_u64() {
-            Ok(r) => {
-                match r {
-                    Some(r) => r,
-                    None => continue,
-                }
-            }
-            Err(err) => {
-                match err {
-                    ScannerError::ParseIntError(_) => {
-                        return Err(format!(
-                            "In {PHASE_PATH:?} at line {LINE}, cannot read the project id: {}",
-                            err,
-                            PHASE_PATH = phase_path,
-                            LINE = line_number
-                        )
-                        .into())
-                    }
-                    ScannerError::IOError(err) => return Err(err.into()),
-                    ScannerError::ParseFloatError(_) => unreachable!(),
-                }
-            }
+            Ok(r) => match r {
+                Some(r) => r,
+                None => continue,
+            },
+            Err(err) => match err {
+                ScannerError::ParseIntError(_) => {
+                    return Err(format!(
+                        "In {PHASE_PATH:?} at line {LINE}, cannot read the project id: {}",
+                        err,
+                        PHASE_PATH = phase_path,
+                        LINE = line_number
+                    )
+                    .into())
+                },
+                ScannerError::IOError(err) => return Err(err.into()),
+                ScannerError::ParseFloatError(_) => unreachable!(),
+            },
         };
 
         let mut set: HashSet<SshUserHost> = HashSet::with_capacity(1);
@@ -562,12 +557,16 @@ pub(crate) fn find_ssh_user_hosts(
                     Some(last_project_id) => {
                         set.extend(map.get(&last_project_id).unwrap().iter().cloned());
                         break;
-                    }
-                    None => return Err(format!(
-                        "In {PHASE_PATH:?} at line {LINE}, should be written after the line that you want to reference",
-                        PHASE_PATH = phase_path,
-                        LINE = line_number,
-                    ).into())
+                    },
+                    None => {
+                        return Err(format!(
+                            "In {PHASE_PATH:?} at line {LINE}, should be written after the line \
+                             that you want to reference",
+                            PHASE_PATH = phase_path,
+                            LINE = line_number,
+                        )
+                        .into())
+                    },
                 }
             }
 
@@ -575,13 +574,14 @@ pub(crate) fn find_ssh_user_hosts(
                 Ok(ssh_user_host) => ssh_user_host,
                 Err(_) => {
                     return Err(format!(
-                    "In {PHASE_PATH:?} at line {LINE}, the format of {USER_HOST:?} is not correct",
-                    PHASE_PATH = phase_path,
-                    LINE = line_number,
-                    USER_HOST = user_host
-                )
+                        "In {PHASE_PATH:?} at line {LINE}, the format of {USER_HOST:?} is not \
+                         correct",
+                        PHASE_PATH = phase_path,
+                        LINE = line_number,
+                        USER_HOST = user_host
+                    )
                     .into())
-                }
+                },
             };
 
             if !set.insert(ssh_user_host) {

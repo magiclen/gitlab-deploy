@@ -1,15 +1,10 @@
-use std::error::Error;
-use std::fmt::Write as FmtWrite;
-
-use execute::{command_args, Execute};
+use std::{error::Error, fmt::Write as FmtWrite};
 
 use clap::ArgMatches;
-
+use execute::{command_args, Execute};
 use tempfile::tempdir;
 
-use crate::constants::*;
-use crate::functions::*;
-use crate::parse::*;
+use crate::{constants::*, functions::*, parse::*};
 
 pub(crate) fn front_develop(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     check_zstd()?;
@@ -55,10 +50,15 @@ pub(crate) fn front_develop(matches: &ArgMatches) -> Result<(), Box<dyn Error>> 
     let ssh_html_path = format!("{}/html", ssh_root);
 
     {
-        let mut command = create_ssh_command(&ssh_user_host, format!("mkdir -p {ROOT_PATH:?} && ((test -d {HTML_PATH:?} && rm -r {HTML_PATH:?}) || true) && mkdir -p {HTML_PATH:?}",
-             ROOT_PATH = ssh_root,
-             HTML_PATH = ssh_html_path,
-        ));
+        let mut command = create_ssh_command(
+            &ssh_user_host,
+            format!(
+                "mkdir -p {ROOT_PATH:?} && ((test -d {HTML_PATH:?} && rm -r {HTML_PATH:?}) || \
+                 true) && mkdir -p {HTML_PATH:?}",
+                ROOT_PATH = ssh_root,
+                HTML_PATH = ssh_html_path,
+            ),
+        );
 
         let status = command.execute()?;
 

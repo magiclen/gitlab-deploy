@@ -1,16 +1,10 @@
-use std::error::Error;
-use std::path::PathBuf;
-use std::process::Stdio;
-
-use execute::Execute;
+use std::{error::Error, path::PathBuf, process::Stdio};
 
 use clap::ArgMatches;
-
+use execute::Execute;
 use trim_in_place::TrimInPlace;
 
-use crate::constants::*;
-use crate::functions::*;
-use crate::parse::*;
+use crate::{constants::*, functions::*, parse::*};
 
 pub(crate) fn front_control(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     check_ssh()?;
@@ -106,15 +100,22 @@ pub(crate) fn front_control(matches: &ArgMatches) -> Result<(), Box<dyn Error>> 
         );
 
         {
-            let mut command =
-                create_ssh_command(ssh_user_host, format!("cd {SSH_PROJECT:?} && (([ ! -d public ] && mkdir public) || true) && (zstd -T0 -d -c {TARBALL:?} | tar -xf - -C public) && mkdir -p {HTML_PATH:?} && (([ -d {HTML_PATH:?} ] && rm -r {HTML_PATH:?}) || true) && cp -r public {HTML_PATH:?} && rm -r public && echo \"{TIMESTAMP} apply {REFERENCE_NAME}-{SHORT_SHA}\" >> {SSH_PROJECT:?}/../control.log",
+            let mut command = create_ssh_command(
+                ssh_user_host,
+                format!(
+                    "cd {SSH_PROJECT:?} && (([ ! -d public ] && mkdir public) || true) && (zstd \
+                     -T0 -d -c {TARBALL:?} | tar -xf - -C public) && mkdir -p {HTML_PATH:?} && \
+                     (([ -d {HTML_PATH:?} ] && rm -r {HTML_PATH:?}) || true) && cp -r public \
+                     {HTML_PATH:?} && rm -r public && echo \"{TIMESTAMP} apply \
+                     {REFERENCE_NAME}-{SHORT_SHA}\" >> {SSH_PROJECT:?}/../control.log",
                     SSH_PROJECT = ssh_project,
                     HTML_PATH = ssh_html_path,
                     REFERENCE_NAME = reference_name.as_ref(),
                     TARBALL = tarball,
                     TIMESTAMP = current_timestamp(),
                     SHORT_SHA = commit_sha.get_short_sha(),
-                ));
+                ),
+            );
 
             let status = command.execute()?;
 

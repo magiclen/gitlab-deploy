@@ -40,7 +40,7 @@ impl Command {
         match self {
             Self::Up | Self::DownAndUp => {
                 "docker-compose up -d --build && (timeout 10 docker-compose logs -f || true)"
-            }
+            },
             Self::Stop => "docker-compose stop",
             Self::Down => "docker-compose down",
             Self::Logs => "docker-compose logs",
