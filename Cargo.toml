@@ -9,7 +9,6 @@ homepage = "https://magiclen.org/gitlab-deploy"
 keywords = ["deploy"]
 categories = ["command-line-utilities"]
 description = "This tool is used for deploying software projects to multiple hosts during different phases."
-readme = "README.md"
 license = "MIT"
 include = ["src/**/*", "Cargo.toml", "README.md", "LICENSE"]
 
