@@ -513,7 +513,9 @@ pub(crate) fn find_ssh_user_hosts(
         }
 
         if let Some(index) = line.find('#') {
-            line.truncate(index);
+            unsafe {
+                line.as_mut_vec().set_len(index);
+            }
         }
 
         let mut sc = ScannerStr::new(&line);
