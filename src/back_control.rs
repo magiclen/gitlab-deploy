@@ -1,142 +1,135 @@
-use std::{error::Error, fmt::Write as FmtWrite, process::Stdio};
+use std::{fmt::Write, process::Stdio};
 
-use clap::ArgMatches;
+use anyhow::anyhow;
 use execute::Execute;
 use trim_in_place::TrimInPlace;
 
-use crate::{constants::*, functions::*, parse::*};
+use crate::{
+    cli::{CLIArgs, CLICommands},
+    constants::*,
+    functions::*,
+    models::*,
+};
 
-pub(crate) fn back_control(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    check_ssh()?;
+pub(crate) fn back_control(cli_args: CLIArgs) -> anyhow::Result<()> {
+    debug_assert!(matches!(cli_args.command, CLICommands::BackendControl { .. }));
 
-    let project_id = parse_parse_id(matches);
+    if let CLICommands::BackendControl {
+        gitlab_project_id: project_id,
+        commit_sha,
+        project_name,
+        reference_name,
+        phase,
+        command,
+    } = cli_args.command
+    {
+        check_ssh()?;
 
-    let commit_sha = parse_commit_sha(matches);
+        let ssh_user_hosts = find_ssh_user_hosts(phase, project_id)?;
 
-    let project_name = parse_project_name(matches);
+        if ssh_user_hosts.is_empty() {
+            log::warn!("No hosts to control!");
+            return Ok(());
+        }
 
-    let reference_name = parse_reference_name(matches);
+        for ssh_user_host in ssh_user_hosts.iter() {
+            log::info!("Controlling to {ssh_user_host} ({command})", command = command.as_str());
 
-    let phase = parse_phase(matches);
+            let ssh_root = {
+                let mut ssh_home = get_ssh_home(ssh_user_host)?;
 
-    let command = parse_command(matches);
+                ssh_home.write_fmt(format_args!("/{PROJECT_DIRECTORY}",))?;
 
-    let ssh_user_hosts = find_ssh_user_hosts(phase, project_id)?;
+                ssh_home
+            };
 
-    if ssh_user_hosts.is_empty() {
-        warn!("No hosts to control!");
-        return Ok(());
-    }
-
-    for ssh_user_host in ssh_user_hosts.iter() {
-        info!("Controlling to {} ({})", ssh_user_host, command.as_str());
-
-        let ssh_root = {
-            let mut ssh_home = get_ssh_home(ssh_user_host)?;
-
-            ssh_home.write_fmt(format_args!(
-                "/{PROJECT_DIRECTORY}",
-                PROJECT_DIRECTORY = PROJECT_DIRECTORY,
-            ))?;
-
-            ssh_home
-        };
-
-        let ssh_project = format!(
-            "{SSH_ROOT}/{PROJECT_NAME}-{PROJECT_ID}/{REFERENCE_NAME}-{SHORT_SHA}",
-            SSH_ROOT = ssh_root,
-            PROJECT_NAME = project_name.as_ref(),
-            PROJECT_ID = project_id,
-            REFERENCE_NAME = reference_name.as_ref(),
-            SHORT_SHA = commit_sha.get_short_sha(),
-        );
-
-        let command_str = command.get_command_str();
-
-        if command == Command::DownAndUp {
-            let mut command = create_ssh_command(
-                ssh_user_host,
-                format!("cat {SSH_PROJECT:?}/../last-up", SSH_PROJECT = ssh_project,),
+            let ssh_project = format!(
+                "{ssh_root}/{project_name}-{project_id}/{reference_name}-{commit_sha}",
+                project_name = project_name.as_ref(),
+                reference_name = reference_name.as_ref(),
+                commit_sha = commit_sha.get_short_sha(),
             );
 
-            command.stdout(Stdio::piped());
-            command.stderr(Stdio::piped());
+            let command_str = command.get_command_str();
 
-            let output = command.execute_output()?;
+            if command == Command::DownAndUp {
+                let mut command =
+                    create_ssh_command(ssh_user_host, format!("cat {ssh_project:?}/../last-up"));
 
-            if output.status.success() {
-                let mut folder = String::from_utf8(output.stdout)?;
+                command.stdout(Stdio::piped());
+                command.stderr(Stdio::piped());
 
-                folder.trim_in_place();
+                let output = command.execute_output()?;
 
-                info!("Trying to shut down {} first", folder);
+                if output.status.success() {
+                    let mut folder = String::from_utf8(output.stdout)?;
 
-                {
-                    let mut command = create_ssh_command(
-                        ssh_user_host,
-                        format!(
-                            "cd {SSH_PROJECT:?}/../{FOLDER} && {COMMAND}",
-                            SSH_PROJECT = ssh_project,
-                            FOLDER = folder,
-                            COMMAND = Command::Down.get_command_str(),
-                        ),
-                    );
+                    folder.trim_in_place();
 
-                    let output = command.execute_output()?;
+                    log::info!("Trying to shut down {folder} first");
 
-                    if !output.status.success() {
-                        warn!("{} cannot be fully shut down", folder);
+                    {
+                        let mut command = create_ssh_command(
+                            ssh_user_host,
+                            format!(
+                                "cd {ssh_project:?}/../{folder} && {command}",
+                                command = Command::Down.get_command_str(),
+                            ),
+                        );
+
+                        let output = command.execute_output()?;
+
+                        if !output.status.success() {
+                            log::warn!("{folder} cannot be fully shut down");
+                        }
                     }
+                }
+            }
+
+            {
+                let mut command = create_ssh_command(
+                    ssh_user_host,
+                    format!(
+                        "cd {ssh_project:?} && echo \"{timestamp} {command} \
+                         {reference_name}-{commit_sha}\" >> {ssh_project:?}/../control.log && \
+                         {command_str}",
+                        reference_name = reference_name.as_ref(),
+                        timestamp = current_timestamp(),
+                        commit_sha = commit_sha.get_short_sha(),
+                        command = command.as_str(),
+                    ),
+                );
+
+                let output = command.execute_output()?;
+
+                if !output.status.success() {
+                    return Err(anyhow!("Control failed!"));
+                }
+            }
+
+            if matches!(command, Command::Up | Command::DownAndUp) {
+                let mut command = create_ssh_command(
+                    ssh_user_host,
+                    format!(
+                        "cd {ssh_project:?} && echo \"{reference_name}-{commit_sha}\" > \
+                         {ssh_project:?}/../last-up",
+                        reference_name = reference_name.as_ref(),
+                        commit_sha = commit_sha.get_short_sha(),
+                    ),
+                );
+
+                let status = command.execute()?;
+
+                if let Some(0) = status {
+                    // do nothing
+                } else {
+                    log::warn!("The latest version information cannot be written");
                 }
             }
         }
 
-        {
-            let mut command = create_ssh_command(
-                ssh_user_host,
-                format!(
-                    "cd {SSH_PROJECT:?} && echo \"{TIMESTAMP} {COMMAND} \
-                     {REFERENCE_NAME}-{SHORT_SHA}\" >> {SSH_PROJECT:?}/../control.log && \
-                     {COMMAND_STR}",
-                    SSH_PROJECT = ssh_project,
-                    REFERENCE_NAME = reference_name.as_ref(),
-                    TIMESTAMP = current_timestamp(),
-                    SHORT_SHA = commit_sha.get_short_sha(),
-                    COMMAND = command.as_str(),
-                    COMMAND_STR = command_str,
-                ),
-            );
-
-            let output = command.execute_output()?;
-
-            if !output.status.success() {
-                return Err("Control failed!".into());
-            }
-        }
-
-        if matches!(command, Command::Up | Command::DownAndUp) {
-            let mut command = create_ssh_command(
-                ssh_user_host,
-                format!(
-                    "cd {SSH_PROJECT:?} && echo \"{REFERENCE_NAME}-{SHORT_SHA}\" > \
-                     {SSH_PROJECT:?}/../last-up",
-                    SSH_PROJECT = ssh_project,
-                    REFERENCE_NAME = reference_name.as_ref(),
-                    SHORT_SHA = commit_sha.get_short_sha(),
-                ),
-            );
-
-            let status = command.execute()?;
-
-            if let Some(0) = status {
-                // do nothing
-            } else {
-                warn!("The latest version information cannot be written");
-            }
-        }
+        log::info!("Successfully!");
     }
-
-    info!("Successfully!");
 
     Ok(())
 }

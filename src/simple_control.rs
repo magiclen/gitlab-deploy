@@ -1,122 +1,113 @@
-use std::{error::Error, fmt::Write as FmtWrite};
+use std::fmt::Write;
 
-use clap::{ArgMatches, Values};
+use anyhow::anyhow;
 use execute::Execute;
 
-use crate::{constants::*, functions::*, parse::*};
+use crate::{
+    cli::{CLIArgs, CLICommands},
+    constants::*,
+    functions::*,
+};
 
-#[inline]
-fn handle_command(values: Option<Values>) -> Result<Vec<&str>, &'static str> {
-    match values {
-        Some(values) => Ok(values.collect()),
-        None => Err("A command is needed."),
-    }
-}
+pub(crate) fn simple_control(cli_args: CLIArgs) -> anyhow::Result<()> {
+    debug_assert!(matches!(cli_args.command, CLICommands::SimpleControl { .. }));
 
-pub(crate) fn simple_control(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    check_ssh()?;
+    if let CLICommands::SimpleControl {
+        gitlab_project_id: project_id,
+        commit_sha,
+        project_name,
+        reference_name,
+        phase,
+        gitlab_api_url_prefix: _,
+        gitlab_api_token: _,
+        inject_project_directory,
+        command,
+    } = cli_args.command
+    {
+        check_ssh()?;
 
-    let project_id = parse_parse_id(matches);
+        let command_string = command.join(" ");
 
-    let commit_sha = parse_commit_sha(matches);
+        let ssh_user_hosts = find_ssh_user_hosts(phase, project_id)?;
 
-    let project_name = parse_project_name(matches);
+        if ssh_user_hosts.is_empty() {
+            log::warn!("No hosts to control!");
+            return Ok(());
+        }
 
-    let reference_name = parse_reference_name(matches);
+        for ssh_user_host in ssh_user_hosts.iter() {
+            log::info!("Controlling to {ssh_user_host} ({command_string})");
 
-    let phase = parse_phase(matches);
+            let ssh_root = {
+                let mut ssh_home = get_ssh_home(ssh_user_host)?;
 
-    let command = handle_command(matches.values_of("COMMAND"))?;
-    let command_string: String = command.join(" ");
+                ssh_home.write_fmt(format_args!("/{PROJECT_DIRECTORY}",))?;
 
-    let inject_project_directory = matches.is_present("INJECT_PROJECT_DIRECTORY");
-
-    let ssh_user_hosts = find_ssh_user_hosts(phase, project_id)?;
-
-    if ssh_user_hosts.is_empty() {
-        warn!("No hosts to control!");
-        return Ok(());
-    }
-
-    for ssh_user_host in ssh_user_hosts.iter() {
-        info!("Controlling to {} ({})", ssh_user_host, command_string);
-
-        let ssh_root = {
-            let mut ssh_home = get_ssh_home(ssh_user_host)?;
-
-            ssh_home.write_fmt(format_args!(
-                "/{PROJECT_DIRECTORY}",
-                PROJECT_DIRECTORY = PROJECT_DIRECTORY,
-            ))?;
-
-            ssh_home
-        };
-
-        let ssh_project = format!(
-            "{SSH_ROOT}/{PROJECT_NAME}-{PROJECT_ID}/{REFERENCE_NAME}-{SHORT_SHA}",
-            SSH_ROOT = ssh_root,
-            PROJECT_NAME = project_name.as_ref(),
-            PROJECT_ID = project_id,
-            REFERENCE_NAME = reference_name.as_ref(),
-            SHORT_SHA = commit_sha.get_short_sha(),
-        );
-
-        {
-            let command_in_ssh = if inject_project_directory {
-                let mut command_in_ssh =
-                    String::with_capacity(command_string.len() + ssh_project.len() + 1);
-
-                if command[0] == "sudo" {
-                    command_in_ssh.push_str("sudo ");
-
-                    if command.len() > 1 {
-                        command_in_ssh.push_str(command[1]);
-                        command_in_ssh.write_fmt(format_args!(" {:?} ", ssh_project))?;
-                        command_in_ssh.push_str(&command[2..].join(" "));
-                    }
-                } else {
-                    command_in_ssh.push_str(command[0]);
-                    command_in_ssh.write_fmt(format_args!(" {:?} ", ssh_project))?;
-                    command_in_ssh.push_str(&command[1..].join(" "));
-                }
-
-                command_in_ssh
-            } else {
-                command_string.clone()
+                ssh_home
             };
 
-            let mut command = create_ssh_command(ssh_user_host, command_in_ssh);
-
-            let output = command.execute_output()?;
-
-            if !output.status.success() {
-                return Err("Control failed!".into());
-            }
-        }
-
-        {
-            let mut command = create_ssh_command(
-                ssh_user_host,
-                format!(
-                    "cd {SSH_PROJECT:?} && echo \"{TIMESTAMP} {COMMAND:?} \
-                     {REFERENCE_NAME}-{SHORT_SHA}\" >> {SSH_PROJECT:?}/../control.log",
-                    SSH_PROJECT = ssh_project,
-                    REFERENCE_NAME = reference_name.as_ref(),
-                    TIMESTAMP = current_timestamp(),
-                    SHORT_SHA = commit_sha.get_short_sha(),
-                    COMMAND = command_string,
-                ),
+            let ssh_project = format!(
+                "{ssh_root}/{project_name}-{project_id}/{reference_name}-{commit_sha}",
+                project_name = project_name.as_ref(),
+                reference_name = reference_name.as_ref(),
+                commit_sha = commit_sha.get_short_sha(),
             );
 
-            let output = command.execute_output()?;
+            {
+                let command_in_ssh = if inject_project_directory {
+                    let mut command_in_ssh =
+                        String::with_capacity(command_string.len() + ssh_project.len() + 1);
 
-            if !output.status.success() {
-                return Err("Control failed!".into());
+                    if command[0] == "sudo" {
+                        command_in_ssh.push_str("sudo ");
+
+                        if command.len() > 1 {
+                            command_in_ssh.push_str(&command[1]);
+                            command_in_ssh.write_fmt(format_args!(" {ssh_project:?} "))?;
+                            command_in_ssh.push_str(&command[2..].join(" "));
+                        }
+                    } else {
+                        command_in_ssh.push_str(&command[0]);
+                        command_in_ssh.write_fmt(format_args!(" {ssh_project:?} "))?;
+                        command_in_ssh.push_str(&command[1..].join(" "));
+                    }
+
+                    command_in_ssh
+                } else {
+                    command_string.clone()
+                };
+
+                let mut command = create_ssh_command(ssh_user_host, command_in_ssh);
+
+                let output = command.execute_output()?;
+
+                if !output.status.success() {
+                    return Err(anyhow!("Control failed!"));
+                }
+            }
+
+            {
+                let mut command = create_ssh_command(
+                    ssh_user_host,
+                    format!(
+                        "cd {ssh_project:?} && echo \"{timestamp} {command_string:?} \
+                         {reference_name}-{commit_sha}\" >> {ssh_project:?}/../control.log",
+                        timestamp = current_timestamp(),
+                        reference_name = reference_name.as_ref(),
+                        commit_sha = commit_sha.get_short_sha(),
+                    ),
+                );
+
+                let output = command.execute_output()?;
+
+                if !output.status.success() {
+                    return Err(anyhow!("Control failed!"));
+                }
             }
         }
-    }
 
-    info!("Successfully!");
+        log::info!("Successfully!");
+    }
 
     Ok(())
 }

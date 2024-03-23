@@ -1,7 +1,7 @@
 use validators::prelude::*;
 
-#[derive(Debug, Validator)]
-#[validator(regex(r"^[a-zA-Z0-9\-_.]{1,80}$"))]
+#[derive(Debug, Clone, Validator)]
+#[validator(regex(regex(r"^[a-zA-Z0-9\-_.]{1,80}$")))]
 pub(crate) struct Name(String);
 
 impl AsRef<str> for Name {

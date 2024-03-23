@@ -1,7 +1,7 @@
 use validators::prelude::*;
 
-#[derive(Debug, Validator)]
-#[validator(regex("^[a-zA-Z0-9]{40}$"))]
+#[derive(Debug, Clone, Validator)]
+#[validator(regex(regex("^[a-zA-Z0-9]{40}$")))]
 pub(crate) struct CommitSha(String);
 
 impl CommitSha {

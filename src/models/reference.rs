@@ -1,6 +1,6 @@
 use validators::prelude::*;
 
-#[derive(Debug, Validator)]
+#[derive(Debug, Clone, Validator)]
 #[validator(line(char_length(trimmed_min = 1)))]
 pub(crate) struct Reference(String);
 

@@ -1,139 +1,136 @@
-use std::{error::Error, fmt::Write as FmtWrite};
+use std::fmt::Write;
 
-use clap::ArgMatches;
+use anyhow::anyhow;
 use execute::Execute;
 
-use crate::{constants::*, functions::*, parse::*};
+use crate::{
+    cli::{CLIArgs, CLICommands},
+    constants::*,
+    functions::*,
+};
 
-pub(crate) fn back_develop(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    check_ssh()?;
-    check_bash()?;
+pub(crate) fn back_develop(cli_args: CLIArgs) -> anyhow::Result<()> {
+    debug_assert!(matches!(cli_args.command, CLICommands::BackendDevelop { .. }));
 
-    let project_id = parse_parse_id(matches);
+    if let CLICommands::BackendDevelop {
+        gitlab_project_id: project_id,
+        project_name,
+        gitlab_project_path: project_path,
+        reference,
+        gitlab_ssh_url_prefix: ssh_url_prefix,
+        develop_ssh_user_host: ssh_user_host,
+    } = cli_args.command
+    {
+        check_ssh()?;
+        check_bash()?;
 
-    let project_name = parse_project_name(matches);
+        log::info!("Deploying to {ssh_user_host}");
 
-    let project_path = parse_project_path(matches);
+        let ssh_root = {
+            let mut ssh_home = get_ssh_home(&ssh_user_host)?;
 
-    let reference = parse_reference(matches);
+            ssh_home.write_fmt(format_args!(
+                "/{PROJECT_DIRECTORY}/{project_name}-{project_id}",
+                project_name = project_name.as_ref(),
+            ))?;
 
-    let ssh_url_prefix = parse_ssh_url_prefix(matches);
+            ssh_home
+        };
 
-    let ssh_user_host = parse_ssh_user_host(matches);
+        let git_path = format!("{ssh_root}/.git");
 
-    info!("Deploying to {}", ssh_user_host);
+        let exist = check_directory_exist(&ssh_user_host, git_path)?;
 
-    let ssh_root = {
-        let mut ssh_home = get_ssh_home(&ssh_user_host)?;
+        if exist {
+            log::info!("The project exists, trying to pull");
 
-        ssh_home.write_fmt(format_args!(
-            "/{DEV_PROJECTS}/{PROJECT_NAME}-{PROJECT_ID}",
-            DEV_PROJECTS = PROJECT_DIRECTORY,
-            PROJECT_NAME = project_name.as_ref(),
-            PROJECT_ID = project_id
-        ))?;
+            check_back_deploy_via_ssh(&ssh_user_host, ssh_root.as_str())?;
 
-        ssh_home
-    };
+            log::info!("Running deploy/develop-down.sh");
 
-    let git_path = format!("{}/.git", ssh_root);
+            {
+                let mut command = create_ssh_command(
+                    &ssh_user_host,
+                    format!("cd {ssh_root:?} && bash 'deploy/develop-down.sh'",),
+                );
 
-    let exist = check_directory_exist(&ssh_user_host, git_path)?;
+                command.execute_output()?;
+            }
 
-    if exist {
-        info!("The project exists, trying to pull");
-
-        check_back_deploy_via_ssh(&ssh_user_host, ssh_root.as_str())?;
-
-        info!("Running deploy/develop-down.sh");
-
-        {
-            let mut command = create_ssh_command(
-                &ssh_user_host,
-                format!("cd {SSH_ROOT:?} && bash 'deploy/develop-down.sh'", SSH_ROOT = ssh_root,),
+            log::info!(
+                "Trying to checkout {reference:?} and pull the branch",
+                reference = reference.as_ref()
             );
 
-            command.execute_output()?;
-        }
+            {
+                let mut command = create_ssh_command(
+                    &ssh_user_host,
+                    format!(
+                        "cd {ssh_root:?} && git checkout {reference:?} && git pull origin \
+                         {reference:?}",
+                        reference = reference.as_ref(),
+                    ),
+                );
 
-        info!(
-            "Trying to checkout {REFERENCE:?} and pull the branch",
-            REFERENCE = reference.as_ref()
-        );
+                let output = command.execute_output()?;
 
-        {
+                if !output.status.success() {
+                    return Err(anyhow!(
+                        "Cannot checkout out and pull {reference:?}",
+                        reference = reference.as_ref()
+                    ));
+                }
+            }
+        } else {
+            let ssh_url = format!(
+                "{ssh_url_prefix}/{project_path}.git",
+                ssh_url_prefix = ssh_url_prefix.as_ref(),
+                project_path = project_path.as_ref()
+            );
+
+            log::info!(
+                "The project does not exist, trying to clone {ssh_url:?} and checkout \
+                 {reference:?}",
+                reference = reference.as_ref(),
+            );
+
             let mut command = create_ssh_command(
                 &ssh_user_host,
                 format!(
-                    "cd {SSH_ROOT:?} && git checkout {REFERENCE:?} && git pull origin \
-                     {REFERENCE:?}",
-                    SSH_ROOT = ssh_root,
-                    REFERENCE = reference.as_ref(),
+                    "mkdir -p {ssh_root:?} && cd {ssh_root:?} && git clone --recursive \
+                     {ssh_url:?} . && git checkout {reference:?}",
+                    ssh_root = ssh_root,
+                    reference = reference.as_ref(),
                 ),
             );
 
             let output = command.execute_output()?;
 
             if !output.status.success() {
-                return Err(format!(
-                    "Cannot checkout out and pull {REFERENCE:?}",
-                    REFERENCE = reference.as_ref()
-                )
-                .into());
+                return Err(anyhow!(
+                    "Cannot clone {ssh_url:?} and checkout out {reference:?}",
+                    reference = reference.as_ref()
+                ));
             }
         }
-    } else {
-        let ssh_url = format!(
-            "{SSH_URL_PREFIX}/{PROJECT_PATH}.git",
-            SSH_URL_PREFIX = ssh_url_prefix.as_ref(),
-            PROJECT_PATH = project_path.as_ref()
-        );
 
-        info!(
-            "The project does not exist, trying to clone {SSH_URL:?} and checkout {REFERENCE:?}",
-            SSH_URL = ssh_url,
-            REFERENCE = reference.as_ref(),
-        );
+        check_back_deploy_via_ssh(&ssh_user_host, ssh_root.as_str())?;
+
+        log::info!("Running deploy/develop-up.sh");
 
         let mut command = create_ssh_command(
             &ssh_user_host,
-            format!(
-                "mkdir -p {SSH_ROOT:?} && cd {SSH_ROOT:?} && git clone --recursive {SSH_URL:?} . \
-                 && git checkout {REFERENCE:?}",
-                SSH_ROOT = ssh_root,
-                SSH_URL = ssh_url,
-                REFERENCE = reference.as_ref(),
-            ),
+            format!("cd {SSH_ROOT:?} && bash 'deploy/develop-up.sh'", SSH_ROOT = ssh_root),
         );
 
         let output = command.execute_output()?;
 
         if !output.status.success() {
-            return Err(format!(
-                "Cannot clone {SSH_URL:?} and checkout out {REFERENCE:?}",
-                SSH_URL = ssh_url,
-                REFERENCE = reference.as_ref()
-            )
-            .into());
+            return Err(anyhow!("Failed!"));
         }
+
+        log::info!("Successfully!");
     }
-
-    check_back_deploy_via_ssh(&ssh_user_host, ssh_root.as_str())?;
-
-    info!("Running deploy/develop-up.sh");
-
-    let mut command = create_ssh_command(
-        &ssh_user_host,
-        format!("cd {SSH_ROOT:?} && bash 'deploy/develop-up.sh'", SSH_ROOT = ssh_root),
-    );
-
-    let output = command.execute_output()?;
-
-    if !output.status.success() {
-        return Err("Failed!".into());
-    }
-
-    info!("Successfully!");
 
     Ok(())
 }

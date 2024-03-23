@@ -1,168 +1,159 @@
-use std::{error::Error, fmt::Write as FmtWrite};
+use std::fmt::Write as FmtWrite;
 
-use clap::ArgMatches;
+use anyhow::anyhow;
 use execute::{command_args, Execute};
 use tempfile::tempdir;
 
-use crate::{constants::*, functions::*, parse::*};
+use crate::{
+    cli::{CLIArgs, CLICommands},
+    constants::*,
+    functions::*,
+};
 
-pub(crate) fn back_deploy(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    check_zstd()?;
-    check_ssh()?;
-    check_wget()?;
-    check_tar()?;
-    check_bash()?;
-    check_docker()?;
+pub(crate) fn back_deploy(cli_args: CLIArgs) -> anyhow::Result<()> {
+    debug_assert!(matches!(cli_args.command, CLICommands::BackendDeploy { .. }));
 
-    let project_id = parse_parse_id(matches);
+    if let CLICommands::BackendDeploy {
+        gitlab_project_id: project_id,
+        commit_sha,
+        project_name,
+        reference_name,
+        build_target,
+        phase,
+        gitlab_api_url_prefix: api_url_prefix,
+        gitlab_api_token: api_token,
+    } = cli_args.command
+    {
+        check_zstd()?;
+        check_ssh()?;
+        check_wget()?;
+        check_tar()?;
+        check_bash()?;
+        check_docker()?;
 
-    let commit_sha = parse_commit_sha(matches);
+        let ssh_user_hosts = find_ssh_user_hosts(phase, project_id)?;
 
-    let project_name = parse_project_name(matches);
+        if ssh_user_hosts.is_empty() {
+            log::warn!("No hosts to deploy!");
+            return Ok(());
+        }
 
-    let reference_name = parse_reference_name(matches);
+        let temp_dir = tempdir()?;
 
-    let build_target = parse_build_target_allow_null(matches);
+        download_and_extract_archive(
+            &temp_dir,
+            api_url_prefix,
+            api_token,
+            project_id,
+            &commit_sha,
+        )?;
 
-    let phase = parse_phase(matches);
+        let (image_name, docker_compose) =
+            check_back_deploy(&temp_dir, &commit_sha, build_target.as_ref())?;
 
-    let api_url_prefix = parse_api_url_prefix(matches);
+        run_back_build(&temp_dir, &commit_sha, build_target.as_ref())?;
 
-    let api_token = parse_api_token(matches);
+        for ssh_user_host in ssh_user_hosts.iter() {
+            log::info!("Deploying to {ssh_user_host}");
 
-    let ssh_user_hosts = find_ssh_user_hosts(phase, project_id)?;
+            let ssh_root = {
+                let mut ssh_home = get_ssh_home(ssh_user_host)?;
 
-    if ssh_user_hosts.is_empty() {
-        warn!("No hosts to deploy!");
-        return Ok(());
-    }
+                ssh_home.write_fmt(format_args!("/{PROJECT_DIRECTORY}",))?;
 
-    let temp_dir = tempdir()?;
+                ssh_home
+            };
 
-    download_and_extract_archive(&temp_dir, api_url_prefix, api_token, project_id, &commit_sha)?;
-
-    let (image_name, docker_compose) =
-        check_back_deploy(&temp_dir, &commit_sha, build_target.as_ref())?;
-
-    run_back_build(&temp_dir, &commit_sha, build_target.as_ref())?;
-
-    for ssh_user_host in ssh_user_hosts.iter() {
-        info!("Deploying to {}", ssh_user_host);
-
-        let ssh_root = {
-            let mut ssh_home = get_ssh_home(ssh_user_host)?;
-
-            ssh_home.write_fmt(format_args!(
-                "/{PROJECT_DIRECTORY}",
-                PROJECT_DIRECTORY = PROJECT_DIRECTORY,
-            ))?;
-
-            ssh_home
-        };
-
-        let ssh_project = format!(
-            "{SSH_ROOT}/{PROJECT_NAME}-{PROJECT_ID}/{REFERENCE_NAME}-{SHORT_SHA}",
-            SSH_ROOT = ssh_root,
-            PROJECT_NAME = project_name.as_ref(),
-            PROJECT_ID = project_id,
-            REFERENCE_NAME = reference_name.as_ref(),
-            SHORT_SHA = commit_sha.get_short_sha(),
-        );
-
-        {
-            let mut command = create_ssh_command(
-                ssh_user_host,
-                format!("mkdir -p {SSH_PROJECT:?}", SSH_PROJECT = ssh_project),
+            let ssh_project = format!(
+                "{ssh_root}/{project_name}-{project_id}/{reference_name}-{commit_sha}",
+                project_name = project_name.as_ref(),
+                reference_name = reference_name.as_ref(),
+                commit_sha = commit_sha.get_short_sha(),
             );
 
-            let status = command.execute()?;
+            {
+                let mut command =
+                    create_ssh_command(ssh_user_host, format!("mkdir -p {ssh_project:?}"));
 
-            if let Some(0) = status {
-                // do nothing
-            } else {
-                return Err(format!(
-                    "Cannot create the directory {:?} for storing the archive of public static \
-                     files.",
-                    ssh_project
-                )
-                .into());
+                let status = command.execute()?;
+
+                if let Some(0) = status {
+                    // do nothing
+                } else {
+                    return Err(anyhow!(
+                        "Cannot create the directory {ssh_project:?} for storing the archive of \
+                         public static files."
+                    ));
+                }
+            }
+
+            let ssh_docker_compose_path = format!("{ssh_project}/docker-compose.yml");
+
+            {
+                let mut command =
+                    create_ssh_command(ssh_user_host, format!("cat - > {ssh_docker_compose_path}"));
+
+                let status = command.execute_input(docker_compose.as_str())?;
+
+                if let Some(0) = status {
+                    // do nothing
+                } else {
+                    return Err(anyhow!(
+                        "Cannot create the docker compose file {ssh_docker_compose_path:?}."
+                    ));
+                }
+            }
+
+            let tarball_path =
+                format!("deploy/{image_name}.tar.zst", image_name = image_name.as_ref());
+
+            let ssh_tarball_path =
+                format!("{ssh_project}/{image_name}.tar.zst", image_name = image_name.as_ref());
+
+            {
+                let mut command = create_scp_command(
+                    ssh_user_host,
+                    tarball_path.as_str(),
+                    ssh_tarball_path.as_str(),
+                );
+
+                command.current_dir(temp_dir.path());
+
+                let status = command.execute()?;
+
+                if let Some(0) = status {
+                    // do nothing
+                } else {
+                    return Err(anyhow!(
+                        "Cannot copy {tarball_path:?} to {ssh_user_host}:{ssh_tarball_path:?} \
+                         ({ssh_user_host_port}).",
+                        ssh_user_host = ssh_user_host.user_host(),
+                        ssh_user_host_port = ssh_user_host.get_port(),
+                    ));
+                }
+            }
+
+            log::info!("Extracting {tarball_path}");
+
+            {
+                let mut command1 = command_args!("zstd", "-d", "-c", "-f", tarball_path);
+
+                command1.current_dir(temp_dir.path());
+
+                let mut command2 = create_ssh_command(ssh_user_host, "docker image load");
+
+                let status = command1.execute_multiple(&mut [&mut command2])?;
+
+                if let Some(0) = status {
+                    // do nothing
+                } else {
+                    return Err(anyhow!("Cannot deploy the docker image"));
+                }
             }
         }
 
-        let ssh_docker_compose_path = format!("{}/docker-compose.yml", ssh_project);
-
-        {
-            let mut command = create_ssh_command(
-                ssh_user_host,
-                format!(
-                    "cat - > {SSH_DOCKER_COMPOSE_PATH}",
-                    SSH_DOCKER_COMPOSE_PATH = ssh_docker_compose_path
-                ),
-            );
-
-            let status = command.execute_input(docker_compose.as_str())?;
-
-            if let Some(0) = status {
-                // do nothing
-            } else {
-                return Err(format!(
-                    "Cannot create the docker compose file {:?}.",
-                    ssh_docker_compose_path
-                )
-                .into());
-            }
-        }
-
-        let tarball_path = format!("deploy/{IMAGE_NAME}.tar.zst", IMAGE_NAME = image_name.as_ref());
-
-        let ssh_tarball_path = format!(
-            "{SSH_PROJECT}/{IMAGE_NAME}.tar.zst",
-            SSH_PROJECT = ssh_project,
-            IMAGE_NAME = image_name.as_ref()
-        );
-
-        {
-            let mut command =
-                create_scp_command(ssh_user_host, tarball_path.as_str(), ssh_tarball_path.as_str());
-
-            command.current_dir(temp_dir.path());
-
-            let status = command.execute()?;
-
-            if let Some(0) = status {
-                // do nothing
-            } else {
-                return Err(format!(
-                    "Cannot copy {FROM:?} to {USER_HOST}:{TO:?} ({PORT}).",
-                    FROM = tarball_path,
-                    USER_HOST = ssh_user_host.user_host(),
-                    TO = ssh_tarball_path,
-                    PORT = ssh_user_host.get_port(),
-                )
-                .into());
-            }
-        }
-
-        info!("Extracting {}", tarball_path);
-
-        {
-            let mut command1 = command_args!("zstd", "-d", "-c", "-f", tarball_path);
-
-            command1.current_dir(temp_dir.path());
-
-            let mut command2 = create_ssh_command(ssh_user_host, "docker image load");
-
-            let status = command1.execute_multiple(&mut [&mut command2])?;
-
-            if let Some(0) = status {
-                // do nothing
-            } else {
-                return Err("Cannot deploy the docker image".into());
-            }
-        }
+        log::info!("Successfully!");
     }
-
-    info!("Successfully!");
 
     Ok(())
 }

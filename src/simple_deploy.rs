@@ -1,107 +1,99 @@
-use std::{error::Error, fmt::Write as FmtWrite, fs::File};
+use std::{fmt::Write, fs::File};
 
-use clap::ArgMatches;
+use anyhow::anyhow;
 use execute::Execute;
 use tempfile::tempdir;
 
-use crate::{constants::*, functions::*, parse::*};
+use crate::{
+    cli::{CLIArgs, CLICommands},
+    constants::*,
+    functions::*,
+};
 
-pub(crate) fn simple_deploy(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    check_ssh()?;
-    check_wget()?;
-    check_docker()?;
+pub(crate) fn simple_deploy(cli_args: CLIArgs) -> anyhow::Result<()> {
+    debug_assert!(matches!(cli_args.command, CLICommands::SimpleDeploy { .. }));
 
-    let project_id = parse_parse_id(matches);
+    if let CLICommands::SimpleDeploy {
+        gitlab_project_id: project_id,
+        commit_sha,
+        project_name,
+        reference_name,
+        phase,
+        gitlab_api_url_prefix: api_url_prefix,
+        gitlab_api_token: api_token,
+    } = cli_args.command
+    {
+        check_ssh()?;
+        check_wget()?;
+        check_docker()?;
 
-    let commit_sha = parse_commit_sha(matches);
+        let ssh_user_hosts = find_ssh_user_hosts(phase, project_id)?;
 
-    let project_name = parse_project_name(matches);
+        if ssh_user_hosts.is_empty() {
+            log::warn!("No hosts to deploy!");
+            return Ok(());
+        }
 
-    let reference_name = parse_reference_name(matches);
+        let temp_dir = tempdir()?;
 
-    let phase = parse_phase(matches);
+        let archive_file_path =
+            download_archive(&temp_dir, api_url_prefix, api_token, project_id, &commit_sha)?;
 
-    let api_url_prefix = parse_api_url_prefix(matches);
+        for ssh_user_host in ssh_user_hosts.iter() {
+            log::info!("Deploying to {ssh_user_host}");
 
-    let api_token = parse_api_token(matches);
+            let ssh_root = {
+                let mut ssh_home = get_ssh_home(ssh_user_host)?;
 
-    let ssh_user_hosts = find_ssh_user_hosts(phase, project_id)?;
+                ssh_home.write_fmt(format_args!("/{PROJECT_DIRECTORY}",))?;
 
-    if ssh_user_hosts.is_empty() {
-        warn!("No hosts to deploy!");
-        return Ok(());
-    }
+                ssh_home
+            };
 
-    let temp_dir = tempdir()?;
-
-    let archive_file_path =
-        download_archive(&temp_dir, api_url_prefix, api_token, project_id, &commit_sha)?;
-
-    for ssh_user_host in ssh_user_hosts.iter() {
-        info!("Deploying to {}", ssh_user_host);
-
-        let ssh_root = {
-            let mut ssh_home = get_ssh_home(ssh_user_host)?;
-
-            ssh_home.write_fmt(format_args!(
-                "/{PROJECT_DIRECTORY}",
-                PROJECT_DIRECTORY = PROJECT_DIRECTORY,
-            ))?;
-
-            ssh_home
-        };
-
-        let ssh_project = format!(
-            "{SSH_ROOT}/{PROJECT_NAME}-{PROJECT_ID}/{REFERENCE_NAME}-{SHORT_SHA}",
-            SSH_ROOT = ssh_root,
-            PROJECT_NAME = project_name.as_ref(),
-            PROJECT_ID = project_id,
-            REFERENCE_NAME = reference_name.as_ref(),
-            SHORT_SHA = commit_sha.get_short_sha(),
-        );
-
-        {
-            let mut command = create_ssh_command(
-                ssh_user_host,
-                format!("mkdir -p {SSH_PROJECT:?}", SSH_PROJECT = ssh_project),
+            let ssh_project = format!(
+                "{ssh_root}/{project_name}-{project_id}/{reference_name}-{commit_sha}",
+                project_name = project_name.as_ref(),
+                reference_name = reference_name.as_ref(),
+                commit_sha = commit_sha.get_short_sha(),
             );
 
-            let status = command.execute()?;
+            {
+                let mut command =
+                    create_ssh_command(ssh_user_host, format!("mkdir -p {ssh_project:?}"));
 
-            if let Some(0) = status {
-                // do nothing
-            } else {
-                return Err(format!(
-                    "Cannot create the directory {:?} for storing the project files.",
-                    ssh_project
-                )
-                .into());
+                let status = command.execute()?;
+
+                if let Some(0) = status {
+                    // do nothing
+                } else {
+                    return Err(anyhow!(
+                        "Cannot create the directory {ssh_project:?} for storing the project \
+                         files.",
+                    ));
+                }
+            }
+
+            log::info!("Unpacking the archive file");
+
+            {
+                let mut command = create_ssh_command(
+                    ssh_user_host,
+                    format!("tar --strip-components 1 -x -v -f - -C {ssh_project:?}"),
+                );
+
+                let status =
+                    command.execute_input_reader(&mut File::open(archive_file_path.as_path())?)?;
+
+                if let Some(0) = status {
+                    // do nothing
+                } else {
+                    return Err(anyhow!("Cannot deploy the project"));
+                }
             }
         }
 
-        info!("Unpacking the archive file");
-
-        {
-            let mut command = create_ssh_command(
-                ssh_user_host,
-                format!(
-                    "tar --strip-components 1 -x -v -f - -C {SSH_PROJECT:?}",
-                    SSH_PROJECT = ssh_project
-                ),
-            );
-
-            let status =
-                command.execute_input_reader(&mut File::open(archive_file_path.as_path())?)?;
-
-            if let Some(0) = status {
-                // do nothing
-            } else {
-                return Err("Cannot deploy the project".into());
-            }
-        }
+        log::info!("Successfully!");
     }
-
-    info!("Successfully!");
 
     Ok(())
 }
