@@ -37,48 +37,14 @@ fn main() -> anyhow::Result<()> {
         simplelog::ColorChoice::Auto,
     )?;
 
-    match &args.command {
-        CLICommands::FrontendDevelop {
-            ..
-        } => {
-            front_develop(args)?;
-        },
-        CLICommands::FrontendDeploy {
-            ..
-        } => {
-            front_deploy(args)?;
-        },
-        CLICommands::FrontendControl {
-            ..
-        } => {
-            front_control(args)?;
-        },
-        CLICommands::BackendDevelop {
-            ..
-        } => {
-            back_develop(args)?;
-        },
-        CLICommands::BackendDeploy {
-            ..
-        } => {
-            back_deploy(args)?;
-        },
-        CLICommands::BackendControl {
-            ..
-        } => {
-            back_control(args)?;
-        },
-        CLICommands::SimpleDeploy {
-            ..
-        } => {
-            simple_deploy(args)?;
-        },
-        CLICommands::SimpleControl {
-            ..
-        } => {
-            simple_control(args)?;
-        },
+    match args.command {
+        CLICommands::FrontendDevelop(args) => front_develop(args),
+        CLICommands::FrontendDeploy(args) => front_deploy(args),
+        CLICommands::FrontendControl(args) => front_control(args),
+        CLICommands::BackendDevelop(args) => back_develop(args),
+        CLICommands::BackendDeploy(args) => back_deploy(args),
+        CLICommands::BackendControl(args) => back_control(args),
+        CLICommands::SimpleDeploy(args) => simple_deploy(args),
+        CLICommands::SimpleControl(args) => simple_control(args),
     }
-
-    Ok(())
 }

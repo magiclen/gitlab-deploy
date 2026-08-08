@@ -4,24 +4,17 @@ use anyhow::anyhow;
 use execute::Execute;
 use trim_in_place::TrimInPlace;
 
-use crate::{
-    cli::{CLIArgs, CLICommands},
-    functions::*,
-    models::*,
-};
+use crate::{cli::BackendControlArgs, functions::*, models::*};
 
-pub(crate) fn back_control(cli_args: CLIArgs) -> anyhow::Result<()> {
-    let CLICommands::BackendControl {
+pub(crate) fn back_control(args: BackendControlArgs) -> anyhow::Result<()> {
+    let BackendControlArgs {
         gitlab_project_id: project_id,
         commit_sha,
         project_name,
         reference_name,
         phase,
         command,
-    } = cli_args.command
-    else {
-        unreachable!();
-    };
+    } = args;
 
     check_command("ssh", "-V")?;
 
@@ -35,20 +28,20 @@ pub(crate) fn back_control(cli_args: CLIArgs) -> anyhow::Result<()> {
     for ssh_user_host in ssh_user_hosts.iter() {
         log::info!("Controlling to {ssh_user_host} ({command})", command = command.as_str());
 
-        let ssh_project_dir = get_ssh_project_dir(
-            get_ssh_project_root(ssh_user_host)?.as_str(),
+        let (ssh_project_dir, ssh_project) = get_ssh_project_dirs(
+            ssh_user_host,
             &project_name,
             project_id,
-        );
-
-        let ssh_project = get_ssh_project(ssh_project_dir.as_str(), &reference_name, &commit_sha);
+            &reference_name,
+            &commit_sha,
+        )?;
 
         let ssh_control_log = format!("{ssh_project_dir}/control.log");
         let ssh_last_up = format!("{ssh_project_dir}/last-up");
 
         let command_str = command.get_command_str();
 
-        if command == Command::DownAndUp {
+        if matches!(command, Command::DownAndUp) {
             let mut command = create_ssh_command(
                 ssh_user_host,
                 format!("cat {ssh_last_up}", ssh_last_up = shell_quote(ssh_last_up.as_str())),
@@ -88,6 +81,18 @@ pub(crate) fn back_control(cli_args: CLIArgs) -> anyhow::Result<()> {
         }
 
         {
+            let mut ssh_command = create_ssh_command(
+                ssh_user_host,
+                format!(
+                    "cd {ssh_project} && {command_str}",
+                    ssh_project = shell_quote(ssh_project.as_str()),
+                ),
+            );
+
+            ensure_command_success(&mut ssh_command, || anyhow!("Control failed!"))?;
+        }
+
+        {
             let log_message = format!(
                 "{timestamp} {command} {reference_name}-{commit_sha}",
                 timestamp = current_timestamp(),
@@ -96,17 +101,22 @@ pub(crate) fn back_control(cli_args: CLIArgs) -> anyhow::Result<()> {
                 commit_sha = commit_sha.get_short_sha(),
             );
 
-            let mut command = create_ssh_command(
+            let mut ssh_command = create_ssh_command(
                 ssh_user_host,
                 format!(
-                    "cd {ssh_project} && echo {log_message} >> {ssh_control_log} && {command_str}",
+                    "cd {ssh_project} && echo {log_message} >> {ssh_control_log}",
                     ssh_project = shell_quote(ssh_project.as_str()),
                     log_message = shell_quote(log_message.as_str()),
                     ssh_control_log = shell_quote(ssh_control_log.as_str()),
                 ),
             );
 
-            ensure_command_success(&mut command, || anyhow!("Control failed!"))?;
+            let output = ssh_command.execute_output()?;
+
+            // The control command itself has already succeeded, so a log that cannot be written should not fail the whole run.
+            if !output.status.success() {
+                log::warn!("The control log {ssh_control_log:?} cannot be written");
+            }
         }
 
         if matches!(command, Command::Up | Command::DownAndUp) {

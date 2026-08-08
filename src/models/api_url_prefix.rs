@@ -6,8 +6,15 @@ use validators_prelude::url;
 #[validator(http_url(local(Allow)))]
 pub(crate) struct ApiUrlPrefix {
     url:      url::Url,
-    #[allow(dead_code)]
     is_https: bool,
+}
+
+impl ApiUrlPrefix {
+    /// Returns whether the URL uses HTTPS.
+    #[inline]
+    pub(crate) fn is_https(&self) -> bool {
+        self.is_https
+    }
 }
 
 impl AsRef<str> for ApiUrlPrefix {

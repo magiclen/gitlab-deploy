@@ -3,24 +3,18 @@ use std::{path::PathBuf, process::Stdio};
 use anyhow::anyhow;
 use execute::Execute;
 use trim_in_place::TrimInPlace;
+use validators::prelude::*;
 
-use crate::{
-    cli::{CLIArgs, CLICommands},
-    constants::*,
-    functions::*,
-};
+use crate::{cli::FrontendControlArgs, constants::*, functions::*, models::*};
 
-pub(crate) fn front_control(cli_args: CLIArgs) -> anyhow::Result<()> {
-    let CLICommands::FrontendControl {
+pub(crate) fn front_control(args: FrontendControlArgs) -> anyhow::Result<()> {
+    let FrontendControlArgs {
         gitlab_project_id: project_id,
         commit_sha,
         project_name,
         reference_name,
         phase,
-    } = cli_args.command
-    else {
-        unreachable!();
-    };
+    } = args;
 
     check_command("ssh", "-V")?;
 
@@ -37,7 +31,7 @@ pub(crate) fn front_control(cli_args: CLIArgs) -> anyhow::Result<()> {
         let ssh_home = get_ssh_home(ssh_user_host)?;
 
         let ssh_project_dir = get_ssh_project_dir(
-            format!("{ssh_home}/{PROJECT_DIRECTORY}").as_str(),
+            get_project_root(ssh_home.as_str()).as_str(),
             &project_name,
             project_id,
         );
@@ -93,7 +87,18 @@ pub(crate) fn front_control(cli_args: CLIArgs) -> anyhow::Result<()> {
             },
         };
 
-        let ssh_www_path = format!("{ssh_home}/{SERVICE_DIRECTORY}/www/{public_name}");
+        // The name comes from the remote host, so it has to pass the same validation as the name that the deployment wrote.
+        let public_name = match Name::parse_str(public_name) {
+            Ok(public_name) => public_name,
+            Err(_) => {
+                return Err(anyhow!("{tarball_path:?} is not a correct archive file"));
+            },
+        };
+
+        let ssh_www_path = format!(
+            "{ssh_home}/{SERVICE_DIRECTORY}/www/{public_name}",
+            public_name = public_name.as_ref()
+        );
         let ssh_html_path = format!("{ssh_www_path}/html");
 
         {
@@ -109,10 +114,10 @@ pub(crate) fn front_control(cli_args: CLIArgs) -> anyhow::Result<()> {
             let mut command = create_ssh_command(
                 ssh_user_host,
                 format!(
-                    "cd {ssh_project} && mkdir -p public && (zstd -T0 -d -c {tarball} | tar -xf - \
-                     -C public) && mkdir -p {ssh_www_path} && ((test -d {ssh_html_path} && rm -r \
-                     {ssh_html_path}) || true) && cp -r public {ssh_html_path} && rm -r public && \
-                     echo {log_message} >> {ssh_control_log}",
+                    "cd {ssh_project} && mkdir -p public && (zstd -d -c {tarball} | tar -xf - -C \
+                     public) && mkdir -p {ssh_www_path} && ((test -d {ssh_html_path} && rm -rf \
+                     {ssh_html_path}) || true) && cp -r public {ssh_html_path} && rm -rf public \
+                     && echo {log_message} >> {ssh_control_log}",
                     ssh_project = shell_quote(ssh_project.as_str()),
                     tarball = shell_quote(tarball.as_ref()),
                     ssh_www_path = shell_quote(ssh_www_path.as_str()),

@@ -26,6 +26,11 @@ quoted before it is sent, so the remote program receives exactly the arguments g
 features such as `$VAR`, `*`, and `&&` are not expanded remotely. Run them through a shell
 explicitly when they are needed, for example `-- bash -c 'systemctl reload nginx && echo done'`.
 
+`--inject-project-directory` inserts the project directory right after the program name, and treats
+a leading bare `sudo` as part of the invocation rather than as the program. It does not understand
+`sudo` options or an absolute path such as `/usr/bin/sudo`, so write the command as
+`-- sudo <program> [arguments]` when the directory has to be injected.
+
 ### Phases
 
 Create a phase file at `$HOME/phases/<phase>`. Each non-comment line starts with a GitLab project

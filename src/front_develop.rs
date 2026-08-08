@@ -2,24 +2,17 @@ use anyhow::anyhow;
 use execute::command_args;
 use tempfile::tempdir;
 
-use crate::{
-    cli::{CLIArgs, CLICommands},
-    constants::*,
-    functions::*,
-};
+use crate::{cli::FrontendDevelopArgs, constants::*, functions::*};
 
-pub(crate) fn front_develop(cli_args: CLIArgs) -> anyhow::Result<()> {
-    let CLICommands::FrontendDevelop {
+pub(crate) fn front_develop(args: FrontendDevelopArgs) -> anyhow::Result<()> {
+    let FrontendDevelopArgs {
         gitlab_project_id: project_id,
         commit_sha,
         build_target,
         gitlab_api_url_prefix: api_url_prefix,
         gitlab_api_token: api_token,
         develop_ssh_user_host: ssh_user_host,
-    } = cli_args.command
-    else {
-        unreachable!();
-    };
+    } = args;
 
     check_command("zstd", "--version")?;
     check_command("ssh", "-V")?;
@@ -51,7 +44,7 @@ pub(crate) fn front_develop(cli_args: CLIArgs) -> anyhow::Result<()> {
         let mut command = create_ssh_command(
             &ssh_user_host,
             format!(
-                "mkdir -p {ssh_root} && ((test -d {ssh_html_path} && rm -r {ssh_html_path}) || \
+                "mkdir -p {ssh_root} && ((test -d {ssh_html_path} && rm -rf {ssh_html_path}) || \
                  true) && mkdir -p {ssh_html_path}",
                 ssh_root = shell_quote(ssh_root.as_str()),
                 ssh_html_path = shell_quote(ssh_html_path.as_str()),
@@ -67,11 +60,11 @@ pub(crate) fn front_develop(cli_args: CLIArgs) -> anyhow::Result<()> {
     }
 
     {
-        let mut command1 = command_args!("zstd", "-T0", "-d", "-c", tarball_path.as_str());
+        let mut command1 = command_args!("zstd", "-d", "-c", tarball_path.as_str());
 
         command1.current_dir(temp_dir.path());
 
-        let mut command2 = create_ssh_command(
+        let mut command2 = create_ssh_command_with_stdin(
             &ssh_user_host,
             format!(
                 "tar -xf - -C {ssh_html_path}",

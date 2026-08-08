@@ -1,22 +1,16 @@
 use anyhow::anyhow;
 
-use crate::{
-    cli::{CLIArgs, CLICommands},
-    functions::*,
-};
+use crate::{cli::BackendDevelopArgs, functions::*};
 
-pub(crate) fn back_develop(cli_args: CLIArgs) -> anyhow::Result<()> {
-    let CLICommands::BackendDevelop {
+pub(crate) fn back_develop(args: BackendDevelopArgs) -> anyhow::Result<()> {
+    let BackendDevelopArgs {
         gitlab_project_id: project_id,
         project_name,
         gitlab_project_path: project_path,
         reference,
         gitlab_ssh_url_prefix: ssh_url_prefix,
         develop_ssh_user_host: ssh_user_host,
-    } = cli_args.command
-    else {
-        unreachable!();
-    };
+    } = args;
 
     check_command("ssh", "-V")?;
     check_command("bash", "--version")?;
@@ -44,8 +38,9 @@ pub(crate) fn back_develop(cli_args: CLIArgs) -> anyhow::Result<()> {
             let mut command = create_ssh_command(
                 &ssh_user_host,
                 format!(
-                    "cd {ssh_root} && bash 'deploy/develop-down.sh'",
+                    "cd {ssh_root} && bash {script}",
                     ssh_root = shell_quote(ssh_root.as_str()),
+                    script = shell_quote("deploy/develop-down.sh"),
                 ),
             );
 
@@ -112,8 +107,9 @@ pub(crate) fn back_develop(cli_args: CLIArgs) -> anyhow::Result<()> {
     let mut command = create_ssh_command(
         &ssh_user_host,
         format!(
-            "cd {ssh_root} && bash 'deploy/develop-up.sh'",
+            "cd {ssh_root} && bash {script}",
             ssh_root = shell_quote(ssh_root.as_str()),
+            script = shell_quote("deploy/develop-up.sh"),
         ),
     );
 

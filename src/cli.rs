@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
+use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use concat_with::concat_line;
 use terminal_size::terminal_size;
 use validators::{
@@ -46,244 +46,268 @@ pub enum CLICommands {
     #[command(about = "Fetch the project via GitLab API and then build it and use the public \
                        static files on a development host")]
     #[command(after_help = AFTER_HELP)]
-    FrontendDevelop {
-        #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]
-        #[arg(help = "Set the ID on GitLab of this project")]
-        gitlab_project_id:     u64,
-        #[arg(long, visible_aliases = ["sha"], env = "CI_COMMIT_SHA")]
-        #[arg(value_parser = parse_commit_sha)]
-        #[arg(help = "Set the sha of the commit")]
-        commit_sha:            CommitSha,
-        #[arg(long, visible_aliases = ["target"])]
-        #[arg(value_parser = parse_build_target)]
-        #[arg(help = "Set the target of this build")]
-        build_target:          BuildTarget,
-        #[arg(long, visible_aliases = ["api-url-prefix"], env = "GITLAB_API_URL_PREFIX")]
-        #[arg(value_parser = parse_api_url_prefix)]
-        #[arg(help = "Set the URL prefix for GitLab APIs")]
-        gitlab_api_url_prefix: ApiUrlPrefix,
-        #[arg(long, visible_aliases = ["api-token"], env = "GITLAB_API_TOKEN")]
-        #[arg(value_parser = parse_api_token)]
-        #[arg(help = "Set the token of GitLab APIs")]
-        gitlab_api_token:      ApiToken,
-        #[arg(long, visible_aliases = ["ssh-user-host"], env = "DEVELOP_SSH_HOST")]
-        #[arg(value_parser = parse_ssh_user_host)]
-        #[arg(help = "Set the SSH user, host and the optional port for development")]
-        develop_ssh_user_host: SshUserHost,
-    },
+    FrontendDevelop(FrontendDevelopArgs),
     #[command(about = "Fetch the project via GitLab API and then build it and deploy the archive \
                        of public static files on multiple hosts according to the phase")]
     #[command(after_help = AFTER_HELP)]
-    FrontendDeploy {
-        #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]
-        #[arg(help = "Set the ID on GitLab of this project")]
-        gitlab_project_id:     u64,
-        #[arg(long, visible_aliases = ["sha"], env = "CI_COMMIT_SHA")]
-        #[arg(value_parser = parse_commit_sha)]
-        #[arg(help = "Set the sha of the commit")]
-        commit_sha:            CommitSha,
-        #[arg(long, env = "CI_PROJECT_NAME")]
-        #[arg(value_parser = parse_name)]
-        #[arg(help = "Set the name of this project")]
-        project_name:          Name,
-        #[arg(long, env = "CI_COMMIT_REF_NAME")]
-        #[arg(value_parser = parse_name)]
-        #[arg(help = "Set the reference name of the commit")]
-        reference_name:        Name,
-        #[arg(long, visible_aliases = ["target"])]
-        #[arg(value_parser = parse_build_target)]
-        #[arg(help = "Set the target of this build")]
-        build_target:          BuildTarget,
-        #[arg(long, visible_aliases = ["phase"])]
-        #[arg(value_parser = parse_phase)]
-        #[arg(help = "Set the phase")]
-        phase:                 Phase,
-        #[arg(long, visible_aliases = ["api-url-prefix"], env = "GITLAB_API_URL_PREFIX")]
-        #[arg(value_parser = parse_api_url_prefix)]
-        #[arg(help = "Set the URL prefix for GitLab APIs")]
-        gitlab_api_url_prefix: ApiUrlPrefix,
-        #[arg(long, visible_aliases = ["api-token"], env = "GITLAB_API_TOKEN")]
-        #[arg(value_parser = parse_api_token)]
-        #[arg(help = "Set the token of GitLab APIs")]
-        gitlab_api_token:      ApiToken,
-    },
+    FrontendDeploy(FrontendDeployArgs),
     #[command(about = "Control the project on multiple hosts according to the phase")]
     #[command(after_help = AFTER_HELP)]
-    FrontendControl {
-        #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]
-        #[arg(help = "Set the ID on GitLab of this project")]
-        gitlab_project_id: u64,
-        #[arg(long, visible_aliases = ["sha"], env = "CI_COMMIT_SHA")]
-        #[arg(value_parser = parse_commit_sha)]
-        #[arg(help = "Set the sha of the commit")]
-        commit_sha:        CommitSha,
-        #[arg(long, env = "CI_PROJECT_NAME")]
-        #[arg(value_parser = parse_name)]
-        #[arg(help = "Set the name of this project")]
-        project_name:      Name,
-        #[arg(long, env = "CI_COMMIT_REF_NAME")]
-        #[arg(value_parser = parse_name)]
-        #[arg(help = "Set the reference name of the commit")]
-        reference_name:    Name,
-        #[arg(long, visible_aliases = ["phase"])]
-        #[arg(value_parser = parse_phase)]
-        #[arg(help = "Set the phase")]
-        phase:             Phase,
-    },
+    FrontendControl(FrontendControlArgs),
     #[command(about = "Fetch the project via Git and checkout to a specific branch and then \
                        start up the service on a development host")]
     #[command(after_help = AFTER_HELP)]
-    BackendDevelop {
-        #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]
-        #[arg(help = "Set the ID on GitLab of this project")]
-        gitlab_project_id:     u64,
-        #[arg(long, env = "CI_PROJECT_NAME")]
-        #[arg(value_parser = parse_name)]
-        #[arg(help = "Set the name of this project")]
-        project_name:          Name,
-        #[arg(long, visible_aliases = ["project-path"], env = "CI_PROJECT_PATH")]
-        #[arg(value_parser = parse_project_path)]
-        #[arg(help = "Set the path of this project on GitLab")]
-        gitlab_project_path:   ProjectPath,
-        #[arg(long, visible_aliases = ["ref"], env = "CI_COMMIT_BRANCH")]
-        #[arg(value_parser = parse_reference)]
-        #[arg(help = "Set the reference of the commit")]
-        reference:             Reference,
-        #[arg(long, visible_aliases = ["ssh-url-prefix"], env = "GITLAB_SSH_URL_PREFIX")]
-        #[arg(value_parser = parse_ssh_url_prefix)]
-        #[arg(help = "Set the SSH URL prefix")]
-        gitlab_ssh_url_prefix: SshUrlPrefix,
-        #[arg(long, visible_aliases = ["ssh-user-host"], env = "DEVELOP_SSH_HOST")]
-        #[arg(value_parser = parse_ssh_user_host)]
-        #[arg(help = "Set the SSH user, host and the optional port for development")]
-        develop_ssh_user_host: SshUserHost,
-    },
+    BackendDevelop(BackendDevelopArgs),
     #[command(about = "Fetch the project via GitLab API and then build it and deploy the docker \
                        image on multiple hosts according to the phase")]
     #[command(after_help = AFTER_HELP)]
-    BackendDeploy {
-        #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]
-        #[arg(help = "Set the ID on GitLab of this project")]
-        gitlab_project_id:     u64,
-        #[arg(long, visible_aliases = ["sha"], env = "CI_COMMIT_SHA")]
-        #[arg(value_parser = parse_commit_sha)]
-        #[arg(help = "Set the sha of the commit")]
-        commit_sha:            CommitSha,
-        #[arg(long, env = "CI_PROJECT_NAME")]
-        #[arg(value_parser = parse_name)]
-        #[arg(help = "Set the name of this project")]
-        project_name:          Name,
-        #[arg(long, env = "CI_COMMIT_REF_NAME")]
-        #[arg(value_parser = parse_name)]
-        #[arg(help = "Set the reference name of the commit")]
-        reference_name:        Name,
-        #[arg(long, visible_aliases = ["target"])]
-        #[arg(value_parser = parse_build_target)]
-        #[arg(help = "Set the target of this build")]
-        build_target:          Option<BuildTarget>,
-        #[arg(long, visible_aliases = ["phase"])]
-        #[arg(value_parser = parse_phase)]
-        #[arg(help = "Set the phase")]
-        phase:                 Phase,
-        #[arg(long, visible_aliases = ["api-url-prefix"], env = "GITLAB_API_URL_PREFIX")]
-        #[arg(value_parser = parse_api_url_prefix)]
-        #[arg(help = "Set the URL prefix for GitLab APIs")]
-        gitlab_api_url_prefix: ApiUrlPrefix,
-        #[arg(long, visible_aliases = ["api-token"], env = "GITLAB_API_TOKEN")]
-        #[arg(value_parser = parse_api_token)]
-        #[arg(help = "Set the token of GitLab APIs")]
-        gitlab_api_token:      ApiToken,
-    },
+    BackendDeploy(BackendDeployArgs),
     #[command(about = "Control the project on multiple hosts according to the phase")]
     #[command(after_help = AFTER_HELP)]
-    BackendControl {
-        #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]
-        #[arg(help = "Set the ID on GitLab of this project")]
-        gitlab_project_id: u64,
-        #[arg(long, visible_aliases = ["sha"], env = "CI_COMMIT_SHA")]
-        #[arg(value_parser = parse_commit_sha)]
-        #[arg(help = "Set the sha of the commit")]
-        commit_sha:        CommitSha,
-        #[arg(long, env = "CI_PROJECT_NAME")]
-        #[arg(value_parser = parse_name)]
-        #[arg(help = "Set the name of this project")]
-        project_name:      Name,
-        #[arg(long, env = "CI_COMMIT_REF_NAME")]
-        #[arg(value_parser = parse_name)]
-        #[arg(help = "Set the reference name of the commit")]
-        reference_name:    Name,
-        #[arg(long, visible_aliases = ["phase"])]
-        #[arg(value_parser = parse_phase)]
-        #[arg(help = "Set the phase")]
-        phase:             Phase,
-        #[arg(long)]
-        #[arg(value_parser = parse_command)]
-        #[arg(help = "Set the command")]
-        command:           Command,
-    },
+    BackendControl(BackendControlArgs),
     #[command(about = "Fetch the project via GitLab API and deploy the project files on multiple \
                        hosts according to the phase")]
     #[command(after_help = AFTER_HELP)]
-    SimpleDeploy {
-        #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]
-        #[arg(help = "Set the ID on GitLab of this project")]
-        gitlab_project_id:     u64,
-        #[arg(long, visible_aliases = ["sha"], env = "CI_COMMIT_SHA")]
-        #[arg(value_parser = parse_commit_sha)]
-        #[arg(help = "Set the sha of the commit")]
-        commit_sha:            CommitSha,
-        #[arg(long, env = "CI_PROJECT_NAME")]
-        #[arg(value_parser = parse_name)]
-        #[arg(help = "Set the name of this project")]
-        project_name:          Name,
-        #[arg(long, env = "CI_COMMIT_REF_NAME")]
-        #[arg(value_parser = parse_name)]
-        #[arg(help = "Set the reference name of the commit")]
-        reference_name:        Name,
-        #[arg(long, visible_aliases = ["phase"])]
-        #[arg(value_parser = parse_phase)]
-        #[arg(help = "Set the phase")]
-        phase:                 Phase,
-        #[arg(long, visible_aliases = ["api-url-prefix"], env = "GITLAB_API_URL_PREFIX")]
-        #[arg(value_parser = parse_api_url_prefix)]
-        #[arg(help = "Set the URL prefix for GitLab APIs")]
-        gitlab_api_url_prefix: ApiUrlPrefix,
-        #[arg(long, visible_aliases = ["api-token"], env = "GITLAB_API_TOKEN")]
-        #[arg(value_parser = parse_api_token)]
-        #[arg(help = "Set the token of GitLab APIs")]
-        gitlab_api_token:      ApiToken,
-    },
+    SimpleDeploy(SimpleDeployArgs),
     #[command(about = "Control the project on multiple hosts according to the phase")]
     #[command(after_help = AFTER_HELP)]
-    SimpleControl {
-        #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]
-        #[arg(help = "Set the ID on GitLab of this project")]
-        gitlab_project_id:        u64,
-        #[arg(long, visible_aliases = ["sha"], env = "CI_COMMIT_SHA")]
-        #[arg(value_parser = parse_commit_sha)]
-        #[arg(help = "Set the sha of the commit")]
-        commit_sha:               CommitSha,
-        #[arg(long, env = "CI_PROJECT_NAME")]
-        #[arg(value_parser = parse_name)]
-        #[arg(help = "Set the name of this project")]
-        project_name:             Name,
-        #[arg(long, env = "CI_COMMIT_REF_NAME")]
-        #[arg(value_parser = parse_name)]
-        #[arg(help = "Set the reference name of the commit")]
-        reference_name:           Name,
-        #[arg(long, visible_aliases = ["phase"])]
-        #[arg(value_parser = parse_phase)]
-        #[arg(help = "Set the phase")]
-        phase:                    Phase,
-        #[arg(long)]
-        #[arg(help = "Inject the project directory as the first argument to the command")]
-        inject_project_directory: bool,
-        #[arg(required = true)]
-        #[arg(last = true)]
-        #[arg(value_hint = clap::ValueHint::CommandWithArguments)]
-        #[arg(help = "Command to execute")]
-        command:                  Vec<String>,
-    },
+    SimpleControl(SimpleControlArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct FrontendDevelopArgs {
+    #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]
+    #[arg(help = "Set the ID on GitLab of this project")]
+    pub gitlab_project_id:     u64,
+    #[arg(long, visible_aliases = ["sha"], env = "CI_COMMIT_SHA")]
+    #[arg(value_parser = parse_commit_sha)]
+    #[arg(help = "Set the sha of the commit")]
+    pub commit_sha:            CommitSha,
+    #[arg(long, visible_aliases = ["target"])]
+    #[arg(value_parser = parse_build_target)]
+    #[arg(help = "Set the target of this build")]
+    pub build_target:          BuildTarget,
+    #[arg(long, visible_aliases = ["api-url-prefix"], env = "GITLAB_API_URL_PREFIX")]
+    #[arg(value_parser = parse_api_url_prefix)]
+    #[arg(help = "Set the URL prefix for GitLab APIs")]
+    pub gitlab_api_url_prefix: ApiUrlPrefix,
+    #[arg(long, visible_aliases = ["api-token"], env = "GITLAB_API_TOKEN")]
+    #[arg(value_parser = parse_api_token)]
+    #[arg(help = "Set the token of GitLab APIs")]
+    pub gitlab_api_token:      ApiToken,
+    #[arg(long, visible_aliases = ["ssh-user-host"], env = "DEVELOP_SSH_HOST")]
+    #[arg(value_parser = parse_ssh_user_host)]
+    #[arg(help = "Set the SSH user, host and the optional port for development")]
+    pub develop_ssh_user_host: SshUserHost,
+}
+
+#[derive(Debug, Args)]
+pub struct FrontendDeployArgs {
+    #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]
+    #[arg(help = "Set the ID on GitLab of this project")]
+    pub gitlab_project_id:     u64,
+    #[arg(long, visible_aliases = ["sha"], env = "CI_COMMIT_SHA")]
+    #[arg(value_parser = parse_commit_sha)]
+    #[arg(help = "Set the sha of the commit")]
+    pub commit_sha:            CommitSha,
+    #[arg(long, env = "CI_PROJECT_NAME")]
+    #[arg(value_parser = parse_name)]
+    #[arg(help = "Set the name of this project")]
+    pub project_name:          Name,
+    #[arg(long, env = "CI_COMMIT_REF_NAME")]
+    #[arg(value_parser = parse_name)]
+    #[arg(help = "Set the reference name of the commit")]
+    pub reference_name:        Name,
+    #[arg(long, visible_aliases = ["target"])]
+    #[arg(value_parser = parse_build_target)]
+    #[arg(help = "Set the target of this build")]
+    pub build_target:          BuildTarget,
+    #[arg(long, visible_aliases = ["phase"])]
+    #[arg(value_parser = parse_phase)]
+    #[arg(help = "Set the phase")]
+    pub phase:                 Phase,
+    #[arg(long, visible_aliases = ["api-url-prefix"], env = "GITLAB_API_URL_PREFIX")]
+    #[arg(value_parser = parse_api_url_prefix)]
+    #[arg(help = "Set the URL prefix for GitLab APIs")]
+    pub gitlab_api_url_prefix: ApiUrlPrefix,
+    #[arg(long, visible_aliases = ["api-token"], env = "GITLAB_API_TOKEN")]
+    #[arg(value_parser = parse_api_token)]
+    #[arg(help = "Set the token of GitLab APIs")]
+    pub gitlab_api_token:      ApiToken,
+}
+
+#[derive(Debug, Args)]
+pub struct FrontendControlArgs {
+    #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]
+    #[arg(help = "Set the ID on GitLab of this project")]
+    pub gitlab_project_id: u64,
+    #[arg(long, visible_aliases = ["sha"], env = "CI_COMMIT_SHA")]
+    #[arg(value_parser = parse_commit_sha)]
+    #[arg(help = "Set the sha of the commit")]
+    pub commit_sha:        CommitSha,
+    #[arg(long, env = "CI_PROJECT_NAME")]
+    #[arg(value_parser = parse_name)]
+    #[arg(help = "Set the name of this project")]
+    pub project_name:      Name,
+    #[arg(long, env = "CI_COMMIT_REF_NAME")]
+    #[arg(value_parser = parse_name)]
+    #[arg(help = "Set the reference name of the commit")]
+    pub reference_name:    Name,
+    #[arg(long, visible_aliases = ["phase"])]
+    #[arg(value_parser = parse_phase)]
+    #[arg(help = "Set the phase")]
+    pub phase:             Phase,
+}
+
+#[derive(Debug, Args)]
+pub struct BackendDevelopArgs {
+    #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]
+    #[arg(help = "Set the ID on GitLab of this project")]
+    pub gitlab_project_id:     u64,
+    #[arg(long, env = "CI_PROJECT_NAME")]
+    #[arg(value_parser = parse_name)]
+    #[arg(help = "Set the name of this project")]
+    pub project_name:          Name,
+    #[arg(long, visible_aliases = ["project-path"], env = "CI_PROJECT_PATH")]
+    #[arg(value_parser = parse_project_path)]
+    #[arg(help = "Set the path of this project on GitLab")]
+    pub gitlab_project_path:   ProjectPath,
+    #[arg(long, visible_aliases = ["ref"], env = "CI_COMMIT_BRANCH")]
+    #[arg(value_parser = parse_reference)]
+    #[arg(help = "Set the reference of the commit")]
+    pub reference:             Reference,
+    #[arg(long, visible_aliases = ["ssh-url-prefix"], env = "GITLAB_SSH_URL_PREFIX")]
+    #[arg(value_parser = parse_ssh_url_prefix)]
+    #[arg(help = "Set the SSH URL prefix")]
+    pub gitlab_ssh_url_prefix: SshUrlPrefix,
+    #[arg(long, visible_aliases = ["ssh-user-host"], env = "DEVELOP_SSH_HOST")]
+    #[arg(value_parser = parse_ssh_user_host)]
+    #[arg(help = "Set the SSH user, host and the optional port for development")]
+    pub develop_ssh_user_host: SshUserHost,
+}
+
+#[derive(Debug, Args)]
+pub struct BackendDeployArgs {
+    #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]
+    #[arg(help = "Set the ID on GitLab of this project")]
+    pub gitlab_project_id:     u64,
+    #[arg(long, visible_aliases = ["sha"], env = "CI_COMMIT_SHA")]
+    #[arg(value_parser = parse_commit_sha)]
+    #[arg(help = "Set the sha of the commit")]
+    pub commit_sha:            CommitSha,
+    #[arg(long, env = "CI_PROJECT_NAME")]
+    #[arg(value_parser = parse_name)]
+    #[arg(help = "Set the name of this project")]
+    pub project_name:          Name,
+    #[arg(long, env = "CI_COMMIT_REF_NAME")]
+    #[arg(value_parser = parse_name)]
+    #[arg(help = "Set the reference name of the commit")]
+    pub reference_name:        Name,
+    #[arg(long, visible_aliases = ["target"])]
+    #[arg(value_parser = parse_build_target)]
+    #[arg(help = "Set the target of this build")]
+    pub build_target:          Option<BuildTarget>,
+    #[arg(long, visible_aliases = ["phase"])]
+    #[arg(value_parser = parse_phase)]
+    #[arg(help = "Set the phase")]
+    pub phase:                 Phase,
+    #[arg(long, visible_aliases = ["api-url-prefix"], env = "GITLAB_API_URL_PREFIX")]
+    #[arg(value_parser = parse_api_url_prefix)]
+    #[arg(help = "Set the URL prefix for GitLab APIs")]
+    pub gitlab_api_url_prefix: ApiUrlPrefix,
+    #[arg(long, visible_aliases = ["api-token"], env = "GITLAB_API_TOKEN")]
+    #[arg(value_parser = parse_api_token)]
+    #[arg(help = "Set the token of GitLab APIs")]
+    pub gitlab_api_token:      ApiToken,
+}
+
+#[derive(Debug, Args)]
+pub struct BackendControlArgs {
+    #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]
+    #[arg(help = "Set the ID on GitLab of this project")]
+    pub gitlab_project_id: u64,
+    #[arg(long, visible_aliases = ["sha"], env = "CI_COMMIT_SHA")]
+    #[arg(value_parser = parse_commit_sha)]
+    #[arg(help = "Set the sha of the commit")]
+    pub commit_sha:        CommitSha,
+    #[arg(long, env = "CI_PROJECT_NAME")]
+    #[arg(value_parser = parse_name)]
+    #[arg(help = "Set the name of this project")]
+    pub project_name:      Name,
+    #[arg(long, env = "CI_COMMIT_REF_NAME")]
+    #[arg(value_parser = parse_name)]
+    #[arg(help = "Set the reference name of the commit")]
+    pub reference_name:    Name,
+    #[arg(long, visible_aliases = ["phase"])]
+    #[arg(value_parser = parse_phase)]
+    #[arg(help = "Set the phase")]
+    pub phase:             Phase,
+    #[arg(long)]
+    #[arg(value_parser = parse_command)]
+    #[arg(help = "Set the command")]
+    pub command:           Command,
+}
+
+#[derive(Debug, Args)]
+pub struct SimpleDeployArgs {
+    #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]
+    #[arg(help = "Set the ID on GitLab of this project")]
+    pub gitlab_project_id:     u64,
+    #[arg(long, visible_aliases = ["sha"], env = "CI_COMMIT_SHA")]
+    #[arg(value_parser = parse_commit_sha)]
+    #[arg(help = "Set the sha of the commit")]
+    pub commit_sha:            CommitSha,
+    #[arg(long, env = "CI_PROJECT_NAME")]
+    #[arg(value_parser = parse_name)]
+    #[arg(help = "Set the name of this project")]
+    pub project_name:          Name,
+    #[arg(long, env = "CI_COMMIT_REF_NAME")]
+    #[arg(value_parser = parse_name)]
+    #[arg(help = "Set the reference name of the commit")]
+    pub reference_name:        Name,
+    #[arg(long, visible_aliases = ["phase"])]
+    #[arg(value_parser = parse_phase)]
+    #[arg(help = "Set the phase")]
+    pub phase:                 Phase,
+    #[arg(long, visible_aliases = ["api-url-prefix"], env = "GITLAB_API_URL_PREFIX")]
+    #[arg(value_parser = parse_api_url_prefix)]
+    #[arg(help = "Set the URL prefix for GitLab APIs")]
+    pub gitlab_api_url_prefix: ApiUrlPrefix,
+    #[arg(long, visible_aliases = ["api-token"], env = "GITLAB_API_TOKEN")]
+    #[arg(value_parser = parse_api_token)]
+    #[arg(help = "Set the token of GitLab APIs")]
+    pub gitlab_api_token:      ApiToken,
+}
+
+#[derive(Debug, Args)]
+pub struct SimpleControlArgs {
+    #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]
+    #[arg(help = "Set the ID on GitLab of this project")]
+    pub gitlab_project_id:        u64,
+    #[arg(long, visible_aliases = ["sha"], env = "CI_COMMIT_SHA")]
+    #[arg(value_parser = parse_commit_sha)]
+    #[arg(help = "Set the sha of the commit")]
+    pub commit_sha:               CommitSha,
+    #[arg(long, env = "CI_PROJECT_NAME")]
+    #[arg(value_parser = parse_name)]
+    #[arg(help = "Set the name of this project")]
+    pub project_name:             Name,
+    #[arg(long, env = "CI_COMMIT_REF_NAME")]
+    #[arg(value_parser = parse_name)]
+    #[arg(help = "Set the reference name of the commit")]
+    pub reference_name:           Name,
+    #[arg(long, visible_aliases = ["phase"])]
+    #[arg(value_parser = parse_phase)]
+    #[arg(help = "Set the phase")]
+    pub phase:                    Phase,
+    #[arg(long)]
+    #[arg(help = "Inject the project directory as the first argument to the command")]
+    pub inject_project_directory: bool,
+    #[arg(required = true)]
+    #[arg(last = true)]
+    #[arg(value_hint = clap::ValueHint::CommandWithArguments)]
+    #[arg(help = "Command to execute")]
+    pub command:                  Vec<String>,
 }
 
 #[inline]

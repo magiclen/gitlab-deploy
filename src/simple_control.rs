@@ -1,10 +1,7 @@
 use anyhow::anyhow;
 use execute::Execute;
 
-use crate::{
-    cli::{CLIArgs, CLICommands},
-    functions::*,
-};
+use crate::{cli::SimpleControlArgs, functions::*};
 
 /// Builds the command line to run on the remote host, optionally with the project directory injected as the first argument.
 fn build_remote_command(
@@ -12,18 +9,21 @@ fn build_remote_command(
     ssh_project: &str,
     inject_project_directory: bool,
 ) -> anyhow::Result<String> {
+    let Some(program) = command.first() else {
+        return Err(anyhow!("There is no command to run"));
+    };
+
     // Every argument is quoted so that the remote shell keeps the arguments exactly as they are given here.
     let mut arguments: Vec<String> =
         command.iter().map(|argument| shell_quote(argument).to_string()).collect();
 
     if inject_project_directory {
         // The project directory is injected right after the program name, which `sudo` is not.
-        let program_index = usize::from(command[0] == "sudo");
+        let program_index = usize::from(program.as_str() == "sudo");
 
         if command.len() <= program_index {
             return Err(anyhow!(
                 "--inject-project-directory needs a program to run after {program:?}",
-                program = command[0],
             ));
         }
 
@@ -33,8 +33,8 @@ fn build_remote_command(
     Ok(arguments.join(" "))
 }
 
-pub(crate) fn simple_control(cli_args: CLIArgs) -> anyhow::Result<()> {
-    let CLICommands::SimpleControl {
+pub(crate) fn simple_control(args: SimpleControlArgs) -> anyhow::Result<()> {
+    let SimpleControlArgs {
         gitlab_project_id: project_id,
         commit_sha,
         project_name,
@@ -42,10 +42,7 @@ pub(crate) fn simple_control(cli_args: CLIArgs) -> anyhow::Result<()> {
         phase,
         inject_project_directory,
         command,
-    } = cli_args.command
-    else {
-        unreachable!();
-    };
+    } = args;
 
     check_command("ssh", "-V")?;
 
@@ -61,13 +58,13 @@ pub(crate) fn simple_control(cli_args: CLIArgs) -> anyhow::Result<()> {
     for ssh_user_host in ssh_user_hosts.iter() {
         log::info!("Controlling to {ssh_user_host} ({command_string})");
 
-        let ssh_project_dir = get_ssh_project_dir(
-            get_ssh_project_root(ssh_user_host)?.as_str(),
+        let (ssh_project_dir, ssh_project) = get_ssh_project_dirs(
+            ssh_user_host,
             &project_name,
             project_id,
-        );
-
-        let ssh_project = get_ssh_project(ssh_project_dir.as_str(), &reference_name, &commit_sha);
+            &reference_name,
+            &commit_sha,
+        )?;
 
         {
             let command_in_ssh = build_remote_command(
@@ -149,6 +146,11 @@ mod tests {
             )
             .unwrap()
         );
+    }
+
+    #[test]
+    fn build_remote_command_rejects_an_empty_command() {
+        assert!(build_remote_command(&[], SSH_PROJECT, false).is_err());
     }
 
     #[test]

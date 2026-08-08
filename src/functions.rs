@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    collections::HashSet,
+    collections::BTreeSet,
     env,
     fmt::{self, Display, Formatter},
     fs::{self, File},
@@ -18,7 +18,7 @@ use execute::{Execute, command, command_args};
 use regex::Regex;
 use scanner_rust::{ScannerError, ScannerStr};
 use slash_formatter::delete_end_slash_in_place;
-use tempfile::{NamedTempFile, TempDir};
+use tempfile::{NamedTempFile, TempDir, tempdir};
 use trim_in_place::TrimInPlace;
 use validators::prelude::*;
 
@@ -94,7 +94,7 @@ pub(crate) fn ensure_pipeline_success<E: FnOnce() -> anyhow::Error>(
 
     let mut first_child = first.spawn()?;
 
-    // The read end is moved into `second`, so the parent no longer keeps the pipe open after the spawn and `second` can see the EOF.
+    // The read end is moved into `second`, which keeps owning it until it is replaced below.
     let first_stdout = first_child.stdout.take().unwrap();
 
     second.stdin(first_stdout);
@@ -110,6 +110,9 @@ pub(crate) fn ensure_pipeline_success<E: FnOnce() -> anyhow::Error>(
             return Err(err.into());
         },
     };
+
+    // `second` still owns a copy of the read end of the pipe, which has to be closed before waiting, otherwise `first` would block forever on a full pipe when `second` exited early.
+    second.stdin(Stdio::null());
 
     let first_status = first_child.wait()?;
 
@@ -128,6 +131,21 @@ pub(crate) fn log_stderr(stderr: &[u8], level: log::Level) {
     });
 }
 
+/// Reads a file under `deploy` that holds a single name and validates it.
+fn read_deploy_name<T: ValidateString>(deploy_dir: &Path, file_name: &str) -> anyhow::Result<T> {
+    match fs::read_to_string(deploy_dir.join(file_name)) {
+        Ok(mut name) => {
+            name.trim_in_place();
+
+            T::parse_string(name).map_err(|_| anyhow!("deploy/{file_name} is not correct"))
+        },
+        Err(ref error) if error.kind() == ErrorKind::NotFound => {
+            Err(anyhow!("deploy/{file_name} cannot be found in the project."))
+        },
+        Err(error) => Err(error.into()),
+    }
+}
+
 pub(crate) fn check_front_deploy(temp_dir: &TempDir) -> anyhow::Result<Name> {
     let deploy_dir = temp_dir.path().join("deploy");
 
@@ -135,24 +153,7 @@ pub(crate) fn check_front_deploy(temp_dir: &TempDir) -> anyhow::Result<Name> {
         return Err(anyhow!("deploy/build.sh cannot be found in the project."));
     }
 
-    let public_name = match fs::read_to_string(deploy_dir.join("public-name.txt")) {
-        Ok(mut public_name) => {
-            public_name.trim_in_place();
-
-            match Name::parse_string(public_name) {
-                Ok(public_name) => public_name,
-                Err(_) => {
-                    return Err(anyhow!("deploy/public-name.txt is not correct"));
-                },
-            }
-        },
-        Err(ref error) if error.kind() == ErrorKind::NotFound => {
-            return Err(anyhow!("deploy/public-name.txt cannot be found in the project."));
-        },
-        Err(error) => return Err(error.into()),
-    };
-
-    Ok(public_name)
+    read_deploy_name(deploy_dir.as_path(), "public-name.txt")
 }
 
 pub(crate) fn check_back_deploy(
@@ -174,22 +175,7 @@ pub(crate) fn check_back_deploy(
         return Err(anyhow!("deploy/develop-down.sh cannot be found in the project."));
     }
 
-    let image_name = match fs::read_to_string(deploy_dir.join("image-name.txt")) {
-        Ok(mut image_name) => {
-            image_name.trim_in_place();
-
-            match ImageName::parse_string(image_name) {
-                Ok(image_name) => image_name,
-                Err(_) => {
-                    return Err(anyhow!("deploy/image-name.txt is not correct"));
-                },
-            }
-        },
-        Err(ref error) if error.kind() == ErrorKind::NotFound => {
-            return Err(anyhow!("deploy/image-name.txt cannot be found in the project."));
-        },
-        Err(error) => return Err(error.into()),
-    };
+    let image_name: ImageName = read_deploy_name(deploy_dir.as_path(), "image-name.txt")?;
 
     let docker_compose_name = if let Some(build_target) = build_target {
         Cow::Owned(format!(
@@ -298,22 +284,60 @@ pub(crate) fn run_back_build(
     Ok(())
 }
 
+fn create_ssh_command_inner(
+    ssh_user_host: &SshUserHost,
+    command: &str,
+    read_stdin: bool,
+) -> Command {
+    let mut ssh: Command =
+        command_args!("ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes");
+
+    if !read_stdin {
+        ssh.arg("-n");
+    }
+
+    ssh.args([
+        "-p",
+        ssh_user_host.get_port().to_string().as_str(),
+        ssh_user_host.user_host(),
+        command,
+    ]);
+
+    ssh
+}
+
+/// Creates an `ssh` command that does not read the standard input.
+///
+/// The standard input is inherited, so without `-n` the first host of a loop would consume all of it and leave nothing for the remaining hosts.
 #[inline]
 pub(crate) fn create_ssh_command<S: AsRef<str>>(
     ssh_user_host: &SshUserHost,
     command: S,
 ) -> Command {
-    command_args!(
-        "ssh",
-        "-o",
-        "StrictHostKeyChecking=no",
-        "-o",
-        "BatchMode=yes",
-        "-p",
-        ssh_user_host.get_port().to_string(),
-        ssh_user_host.user_host(),
-        command.as_ref()
-    )
+    create_ssh_command_inner(ssh_user_host, command.as_ref(), false)
+}
+
+/// Creates an `ssh` command that reads the standard input, for the callers that feed data to the remote command.
+#[inline]
+pub(crate) fn create_ssh_command_with_stdin<S: AsRef<str>>(
+    ssh_user_host: &SshUserHost,
+    command: S,
+) -> Command {
+    create_ssh_command_inner(ssh_user_host, command.as_ref(), true)
+}
+
+/// Creates a directory on the remote host and fails when it cannot be created.
+pub(crate) fn create_ssh_directory(
+    ssh_user_host: &SshUserHost,
+    path: &str,
+    purpose: &str,
+) -> anyhow::Result<()> {
+    let mut command =
+        create_ssh_command(ssh_user_host, format!("mkdir -p {path}", path = shell_quote(path)));
+
+    ensure_command_success(&mut command, || {
+        anyhow!("Cannot create the directory {path:?} for storing {purpose}.")
+    })
 }
 
 #[inline]
@@ -340,6 +364,26 @@ pub(crate) fn create_scp_command<F: AsRef<str>, T: AsRef<str>>(
     )
 }
 
+/// Copies an archive to the remote host with scp and fails when the copy does not succeed.
+pub(crate) fn scp_archive(
+    current_dir: &Path,
+    ssh_user_host: &SshUserHost,
+    from: &str,
+    to: &str,
+) -> anyhow::Result<()> {
+    let mut command = create_scp_command(ssh_user_host, from, to);
+
+    command.current_dir(current_dir);
+
+    ensure_command_success(&mut command, || {
+        anyhow!(
+            "Cannot copy {from:?} to {ssh_user_host}:{to:?} ({ssh_user_host_port}).",
+            ssh_user_host = ssh_user_host.user_host(),
+            ssh_user_host_port = ssh_user_host.get_port(),
+        )
+    })
+}
+
 pub(crate) fn get_ssh_home(ssh_user_host: &SshUserHost) -> anyhow::Result<String> {
     let mut command = create_ssh_command(ssh_user_host, "echo $HOME");
 
@@ -361,6 +405,12 @@ pub(crate) fn get_ssh_home(ssh_user_host: &SshUserHost) -> anyhow::Result<String
     delete_end_slash_in_place(&mut home);
 
     Ok(home)
+}
+
+/// Returns the directory that keeps all deployed projects under a home directory on the remote host.
+#[inline]
+pub(crate) fn get_project_root(ssh_home: &str) -> String {
+    format!("{ssh_home}/{PROJECT_DIRECTORY}")
 }
 
 /// Returns the directory that keeps all deployed projects on the remote host.
@@ -392,6 +442,25 @@ pub(crate) fn get_ssh_project(
         reference_name = reference_name.as_ref(),
         commit_sha = commit_sha.get_short_sha(),
     )
+}
+
+/// Returns the directory that keeps every deployment of a project and the directory of this deployment on the remote host.
+pub(crate) fn get_ssh_project_dirs(
+    ssh_user_host: &SshUserHost,
+    project_name: &Name,
+    project_id: u64,
+    reference_name: &Name,
+    commit_sha: &CommitSha,
+) -> anyhow::Result<(String, String)> {
+    let ssh_project_dir = get_ssh_project_dir(
+        get_ssh_project_root(ssh_user_host)?.as_str(),
+        project_name,
+        project_id,
+    );
+
+    let ssh_project = get_ssh_project(ssh_project_dir.as_str(), reference_name, commit_sha);
+
+    Ok((ssh_project_dir, ssh_project))
 }
 
 pub(crate) fn list_ssh_files<S: AsRef<str>>(
@@ -456,15 +525,45 @@ pub(crate) fn check_directory_exist<S: AsRef<str>>(
     check_path_exist(ssh_user_host, "-d", path.as_ref())
 }
 
+/// A `wget` startup file that carries the API token.
+pub(crate) struct WgetConfig {
+    // The file has to be dropped before the directory that holds it, which is the order the fields are declared in.
+    file: NamedTempFile,
+    _dir: TempDir,
+}
+
+impl WgetConfig {
+    #[inline]
+    fn path(&self) -> &Path {
+        self.file.path()
+    }
+}
+
 /// Creates a `wget` startup file that carries the API token, so that the token never appears in the command line where any user could read it with `ps`.
 ///
-/// Note that `--config` replaces the default startup files, which means `~/.wgetrc` is not read at all.
-fn create_wget_config(temp_dir: &TempDir, api_token: &ApiToken) -> anyhow::Result<NamedTempFile> {
-    let mut config = NamedTempFile::new_in(temp_dir.path())?;
+/// The file gets a directory of its own, so that it never sits next to the files extracted from the project. Note that `--config` replaces the default startup files, which means `~/.wgetrc` is not read at all.
+fn create_wget_config(
+    api_url_prefix: &ApiUrlPrefix,
+    api_token: &ApiToken,
+) -> anyhow::Result<WgetConfig> {
+    if api_url_prefix.is_https() {
+        log::warn!(
+            "The TLS certificate of the GitLab server is not verified, so the API token can be \
+             read by a man in the middle."
+        );
+    } else {
+        log::warn!("The GitLab API URL is not HTTPS, so the API token is sent in plain text.");
+    }
 
-    writeln!(config, "header = PRIVATE-TOKEN: {api_token}", api_token = api_token.as_ref())?;
+    let dir = tempdir()?;
+    let mut file = NamedTempFile::new_in(dir.path())?;
 
-    Ok(config)
+    writeln!(file, "header = PRIVATE-TOKEN: {api_token}", api_token = api_token.as_ref())?;
+
+    Ok(WgetConfig {
+        file,
+        _dir: dir,
+    })
 }
 
 pub(crate) fn download_archive(
@@ -485,7 +584,7 @@ pub(crate) fn download_archive(
     log::info!("Fetching project from {archive_url:?}");
 
     {
-        let config = create_wget_config(temp_dir, &api_token)?;
+        let config = create_wget_config(&api_url_prefix, &api_token)?;
 
         let mut command = command_args!(
             "wget",
@@ -521,7 +620,7 @@ pub(crate) fn download_and_extract_archive(
     log::info!("Fetching project from {archive_url:?}");
 
     {
-        let config = create_wget_config(temp_dir, &api_token)?;
+        let config = create_wget_config(&api_url_prefix, &api_token)?;
 
         let mut command1 = command_args!(
             "wget",
@@ -550,7 +649,14 @@ pub(crate) fn download_and_extract_archive(
 pub(crate) fn find_ssh_user_hosts(
     phase: Phase,
     project_id: u64,
-) -> anyhow::Result<HashSet<SshUserHost>> {
+) -> anyhow::Result<BTreeSet<SshUserHost>> {
+    let phase_str = phase.as_ref();
+
+    // A phase is used as a path segment, so it must not be a traversal.
+    if phase_str == "." || phase_str == ".." {
+        return Err(anyhow!("{phase_str:?} is not a supported phase!"));
+    }
+
     let mut home = env::var("HOME")?;
 
     delete_end_slash_in_place(&mut home);
@@ -576,11 +682,11 @@ fn parse_phase_file<R: BufRead>(
     mut reader: R,
     project_id: u64,
     phase_path: &Path,
-) -> anyhow::Result<Option<HashSet<SshUserHost>>> {
-    let mut target: Option<HashSet<SshUserHost>> = None;
+) -> anyhow::Result<Option<BTreeSet<SshUserHost>>> {
+    let mut target: Option<BTreeSet<SshUserHost>> = None;
     // The `.` reference only looks at the previous line, so there is no need to keep every line.
-    let mut last_set: Option<HashSet<SshUserHost>> = None;
-    let mut seen_project_ids: HashSet<u64> = HashSet::new();
+    let mut last_set: Option<BTreeSet<SshUserHost>> = None;
+    let mut seen_project_ids: BTreeSet<u64> = BTreeSet::new();
 
     let mut line_number = 0;
 
@@ -597,9 +703,7 @@ fn parse_phase_file<R: BufRead>(
         }
 
         if let Some(index) = line.find('#') {
-            unsafe {
-                line.as_mut_vec().set_len(index);
-            }
+            line.truncate(index);
         }
 
         let mut sc = ScannerStr::new(&line);
@@ -628,7 +732,7 @@ fn parse_phase_file<R: BufRead>(
             ));
         }
 
-        let mut set: HashSet<SshUserHost> = HashSet::with_capacity(1);
+        let mut set: BTreeSet<SshUserHost> = BTreeSet::new();
 
         while let Some(user_host) = sc.next()? {
             if set.is_empty() && user_host == "." {
@@ -688,12 +792,24 @@ pub(crate) fn current_timestamp() -> DelayedFormat<StrftimeItems<'static>> {
 mod tests {
     use super::*;
 
-    fn parse(input: &str, project_id: u64) -> Option<HashSet<SshUserHost>> {
+    fn parse(input: &str, project_id: u64) -> Option<BTreeSet<SshUserHost>> {
         parse_phase_file(input.as_bytes(), project_id, Path::new("phases/test")).unwrap()
     }
 
     fn host(s: &str) -> SshUserHost {
         SshUserHost::parse_str(s).unwrap()
+    }
+
+    #[test]
+    fn ensure_pipeline_success_fails_when_the_second_command_exits_early() {
+        // The first command writes much more than a pipe buffer, so it would block forever if the read end of the pipe were still open here.
+        let mut first = command_args!("head", "-c", "10000000", "/dev/zero");
+        let mut second: Command = command_args!("false");
+
+        assert!(
+            ensure_pipeline_success(&mut first, &mut second, || anyhow!("Pipeline failed"))
+                .is_err()
+        );
     }
 
     #[test]
@@ -716,7 +832,7 @@ mod tests {
         let hosts = parse("123 alice@a.example.com bob@b.example.com:2222\n", 123).unwrap();
 
         assert_eq!(
-            HashSet::from([host("alice@a.example.com"), host("bob@b.example.com:2222")]),
+            BTreeSet::from([host("alice@a.example.com"), host("bob@b.example.com:2222")]),
             hosts
         );
     }
@@ -726,14 +842,14 @@ mod tests {
         let hosts =
             parse("# a comment\n\n123 alice@a.example.com # another comment\n", 123).unwrap();
 
-        assert_eq!(HashSet::from([host("alice@a.example.com")]), hosts);
+        assert_eq!(BTreeSet::from([host("alice@a.example.com")]), hosts);
     }
 
     #[test]
     fn parse_phase_file_expands_the_dot_reference() {
         let hosts = parse("123 alice@a.example.com bob@b.example.com\n456 .\n", 456).unwrap();
 
-        assert_eq!(HashSet::from([host("alice@a.example.com"), host("bob@b.example.com")]), hosts);
+        assert_eq!(BTreeSet::from([host("alice@a.example.com"), host("bob@b.example.com")]), hosts);
     }
 
     #[test]
@@ -751,5 +867,11 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn find_ssh_user_hosts_rejects_a_traversal_phase() {
+        assert!(find_ssh_user_hosts(Phase::parse_str("..").unwrap(), 123).is_err());
+        assert!(find_ssh_user_hosts(Phase::parse_str(".").unwrap(), 123).is_err());
     }
 }
