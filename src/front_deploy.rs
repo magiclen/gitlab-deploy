@@ -1,12 +1,9 @@
-use std::fmt::Write as FmtWrite;
-
 use anyhow::anyhow;
 use execute::Execute;
 use tempfile::tempdir;
 
 use crate::{
     cli::{CLIArgs, CLICommands},
-    constants::*,
     functions::*,
 };
 
@@ -24,11 +21,12 @@ pub(crate) fn front_deploy(cli_args: CLIArgs) -> anyhow::Result<()> {
         gitlab_api_token: api_token,
     } = cli_args.command
     {
-        check_zstd()?;
-        check_ssh()?;
-        check_wget()?;
-        check_tar()?;
-        check_bash()?;
+        check_command("zstd", "--version")?;
+        // scp comes with ssh, so it is checked implicitly
+        check_command("ssh", "-V")?;
+        check_command("wget", "--version")?;
+        check_command("tar", "--version")?;
+        check_command("bash", "--version")?;
 
         let ssh_user_hosts = find_ssh_user_hosts(phase, project_id)?;
 
@@ -54,13 +52,7 @@ pub(crate) fn front_deploy(cli_args: CLIArgs) -> anyhow::Result<()> {
         for ssh_user_host in ssh_user_hosts.iter() {
             log::info!("Deploying to {ssh_user_host}");
 
-            let ssh_root = {
-                let mut ssh_home = get_ssh_home(ssh_user_host)?;
-
-                ssh_home.write_fmt(format_args!("/{PROJECT_DIRECTORY}",))?;
-
-                ssh_home
-            };
+            let ssh_root = get_ssh_project_root(ssh_user_host)?;
 
             let ssh_project = format!(
                 "{ssh_root}/{project_name}-{project_id}/{reference_name}-{commit_sha}",
@@ -70,19 +62,20 @@ pub(crate) fn front_deploy(cli_args: CLIArgs) -> anyhow::Result<()> {
             );
 
             {
-                let mut command =
-                    create_ssh_command(ssh_user_host, format!("mkdir -p {ssh_project:?}"));
+                let mut command = create_ssh_command(
+                    ssh_user_host,
+                    format!(
+                        "mkdir -p {ssh_project}",
+                        ssh_project = shell_quote(ssh_project.as_str())
+                    ),
+                );
 
-                let status = command.execute()?;
-
-                if let Some(0) = status {
-                    // do nothing
-                } else {
-                    return Err(anyhow!(
+                ensure_exit_success(command.execute()?, || {
+                    anyhow!(
                         "Cannot create the directory {ssh_project:?} for storing the archive of \
                          public static files."
-                    ));
-                }
+                    )
+                })?;
             }
 
             let tarball_path =
@@ -100,18 +93,14 @@ pub(crate) fn front_deploy(cli_args: CLIArgs) -> anyhow::Result<()> {
 
                 command.current_dir(temp_dir.path());
 
-                let status = command.execute()?;
-
-                if let Some(0) = status {
-                    // do nothing
-                } else {
-                    return Err(anyhow!(
+                ensure_exit_success(command.execute()?, || {
+                    anyhow!(
                         "Cannot copy {tarball_path:?} to {ssh_user_host}:{ssh_tarball_path:?} \
                          ({ssh_user_host_port}).",
                         ssh_user_host = ssh_user_host.user_host(),
                         ssh_user_host_port = ssh_user_host.get_port(),
-                    ));
-                }
+                    )
+                })?;
             }
         }
 

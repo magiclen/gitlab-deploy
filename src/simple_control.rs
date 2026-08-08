@@ -1,11 +1,8 @@
-use std::fmt::Write;
-
 use anyhow::anyhow;
 use execute::Execute;
 
 use crate::{
     cli::{CLIArgs, CLICommands},
-    constants::*,
     functions::*,
 };
 
@@ -24,7 +21,7 @@ pub(crate) fn simple_control(cli_args: CLIArgs) -> anyhow::Result<()> {
         command,
     } = cli_args.command
     {
-        check_ssh()?;
+        check_command("ssh", "-V")?;
 
         let command_string = command.join(" ");
 
@@ -38,41 +35,37 @@ pub(crate) fn simple_control(cli_args: CLIArgs) -> anyhow::Result<()> {
         for ssh_user_host in ssh_user_hosts.iter() {
             log::info!("Controlling to {ssh_user_host} ({command_string})");
 
-            let ssh_root = {
-                let mut ssh_home = get_ssh_home(ssh_user_host)?;
-
-                ssh_home.write_fmt(format_args!("/{PROJECT_DIRECTORY}",))?;
-
-                ssh_home
-            };
+            let ssh_project_dir = format!(
+                "{ssh_root}/{project_name}-{project_id}",
+                ssh_root = get_ssh_project_root(ssh_user_host)?,
+                project_name = project_name.as_ref(),
+            );
 
             let ssh_project = format!(
-                "{ssh_root}/{project_name}-{project_id}/{reference_name}-{commit_sha}",
-                project_name = project_name.as_ref(),
+                "{ssh_project_dir}/{reference_name}-{commit_sha}",
                 reference_name = reference_name.as_ref(),
                 commit_sha = commit_sha.get_short_sha(),
             );
 
             {
                 let command_in_ssh = if inject_project_directory {
-                    let mut command_in_ssh =
-                        String::with_capacity(command_string.len() + ssh_project.len() + 1);
+                    // The project directory is injected right after the program name, which `sudo` is not.
+                    let program_index = usize::from(command[0] == "sudo");
 
-                    if command[0] == "sudo" {
-                        command_in_ssh.push_str("sudo ");
-
-                        if command.len() > 1 {
-                            command_in_ssh.push_str(&command[1]);
-                            command_in_ssh.write_fmt(format_args!(" {ssh_project:?} "))?;
-                            command_in_ssh.push_str(&command[2..].join(" "));
-                        }
-                    } else {
-                        command_in_ssh.push_str(&command[0]);
-                        command_in_ssh.write_fmt(format_args!(" {ssh_project:?} "))?;
-                        command_in_ssh.push_str(&command[1..].join(" "));
+                    if command.len() <= program_index {
+                        return Err(anyhow!(
+                            "--inject-project-directory needs a program to run after {program:?}",
+                            program = command[0],
+                        ));
                     }
 
-                    command_in_ssh
+                    format!(
+                        "{prefix}{program} {ssh_project} {arguments}",
+                        prefix = if program_index == 0 { "" } else { "sudo " },
+                        program = command[program_index],
+                        ssh_project = shell_quote(ssh_project.as_str()),
+                        arguments = command[(program_index + 1)..].join(" "),
+                    )
                 } else {
                     command_string.clone()
                 };
@@ -87,14 +80,22 @@ pub(crate) fn simple_control(cli_args: CLIArgs) -> anyhow::Result<()> {
             }
 
             {
+                let ssh_control_log = format!("{ssh_project_dir}/control.log");
+
+                let log_message = format!(
+                    "{timestamp} {command_string:?} {reference_name}-{commit_sha}",
+                    timestamp = current_timestamp(),
+                    reference_name = reference_name.as_ref(),
+                    commit_sha = commit_sha.get_short_sha(),
+                );
+
                 let mut command = create_ssh_command(
                     ssh_user_host,
                     format!(
-                        "cd {ssh_project:?} && echo \"{timestamp} {command_string:?} \
-                         {reference_name}-{commit_sha}\" >> {ssh_project:?}/../control.log",
-                        timestamp = current_timestamp(),
-                        reference_name = reference_name.as_ref(),
-                        commit_sha = commit_sha.get_short_sha(),
+                        "cd {ssh_project} && echo {log_message} >> {ssh_control_log}",
+                        ssh_project = shell_quote(ssh_project.as_str()),
+                        log_message = shell_quote(log_message.as_str()),
+                        ssh_control_log = shell_quote(ssh_control_log.as_str()),
                     ),
                 );
 

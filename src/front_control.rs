@@ -21,7 +21,7 @@ pub(crate) fn front_control(cli_args: CLIArgs) -> anyhow::Result<()> {
         phase,
     } = cli_args.command
     {
-        check_ssh()?;
+        check_command("ssh", "-V")?;
 
         let ssh_user_hosts = find_ssh_user_hosts(phase, project_id)?;
 
@@ -35,11 +35,13 @@ pub(crate) fn front_control(cli_args: CLIArgs) -> anyhow::Result<()> {
 
             let ssh_home = get_ssh_home(ssh_user_host)?;
 
-            let ssh_root = format!("{ssh_home}/{PROJECT_DIRECTORY}");
+            let ssh_project_dir = format!(
+                "{ssh_home}/{PROJECT_DIRECTORY}/{project_name}-{project_id}",
+                project_name = project_name.as_ref(),
+            );
 
             let ssh_project = format!(
-                "{ssh_root}/{project_name}-{project_id}/{reference_name}-{commit_sha}",
-                project_name = project_name.as_ref(),
+                "{ssh_project_dir}/{reference_name}-{commit_sha}",
                 reference_name = reference_name.as_ref(),
                 commit_sha = commit_sha.get_short_sha(),
             );
@@ -48,7 +50,8 @@ pub(crate) fn front_control(cli_args: CLIArgs) -> anyhow::Result<()> {
                 let mut command = create_ssh_command(
                     ssh_user_host,
                     format!(
-                        "find {ssh_project:?} -mindepth 1 -maxdepth 1 -iname '*.tar.zst' | head -1"
+                        "find {ssh_project} -mindepth 1 -maxdepth 1 -name '*.tar.zst' | head -1",
+                        ssh_project = shell_quote(ssh_project.as_str()),
                     ),
                 );
 
@@ -70,13 +73,7 @@ pub(crate) fn front_control(cli_args: CLIArgs) -> anyhow::Result<()> {
 
                     PathBuf::from(files)
                 } else {
-                    String::from_utf8_lossy(output.stderr.as_slice()).split('\n').for_each(
-                        |line| {
-                            if !line.is_empty() {
-                                log::error!("{line}");
-                            }
-                        },
-                    );
+                    log_stderr(output.stderr.as_slice(), log::Level::Error);
 
                     return Err(anyhow!(
                         "The archive file cannot be found in the project {ssh_project:?}"
@@ -87,31 +84,36 @@ pub(crate) fn front_control(cli_args: CLIArgs) -> anyhow::Result<()> {
             let tarball = tarball_path.file_name().unwrap().to_string_lossy();
             let public_name = tarball.strip_suffix(".tar.zst").unwrap();
 
-            let ssh_html_path = format!("{ssh_home}/{SERVICE_DIRECTORY}/www/{public_name}/html");
+            let ssh_www_path = format!("{ssh_home}/{SERVICE_DIRECTORY}/www/{public_name}");
+            let ssh_html_path = format!("{ssh_www_path}/html");
 
             {
+                let ssh_control_log = format!("{ssh_project_dir}/control.log");
+
+                let log_message = format!(
+                    "{timestamp} apply {reference_name}-{commit_sha}",
+                    timestamp = current_timestamp(),
+                    reference_name = reference_name.as_ref(),
+                    commit_sha = commit_sha.get_short_sha(),
+                );
+
                 let mut command = create_ssh_command(
                     ssh_user_host,
                     format!(
-                        "cd {ssh_project:?} && (([ ! -d public ] && mkdir public) || true) && \
-                         (zstd -T0 -d -c {tarball:?} | tar -xf - -C public) && mkdir -p \
-                         {ssh_html_path:?} && (([ -d {ssh_html_path:?} ] && rm -r \
-                         {ssh_html_path:?}) || true) && cp -r public {ssh_html_path:?} && rm -r \
-                         public && echo \"{timestamp} apply {reference_name}-{commit_sha}\" >> \
-                         {ssh_project:?}/../control.log",
-                        reference_name = reference_name.as_ref(),
-                        timestamp = current_timestamp(),
-                        commit_sha = commit_sha.get_short_sha(),
+                        "cd {ssh_project} && mkdir -p public && (zstd -T0 -d -c {tarball} | tar \
+                         -xf - -C public) && mkdir -p {ssh_www_path} && ((test -d {ssh_html_path} \
+                         && rm -r {ssh_html_path}) || true) && cp -r public {ssh_html_path} && rm \
+                         -r public && echo {log_message} >> {ssh_control_log}",
+                        ssh_project = shell_quote(ssh_project.as_str()),
+                        tarball = shell_quote(tarball.as_ref()),
+                        ssh_www_path = shell_quote(ssh_www_path.as_str()),
+                        ssh_html_path = shell_quote(ssh_html_path.as_str()),
+                        log_message = shell_quote(log_message.as_str()),
+                        ssh_control_log = shell_quote(ssh_control_log.as_str()),
                     ),
                 );
 
-                let status = command.execute()?;
-
-                if let Some(0) = status {
-                    // do nothing
-                } else {
-                    return Err(anyhow!("Cannot apply the project"));
-                }
+                ensure_exit_success(command.execute()?, || anyhow!("Cannot apply the project"))?;
             }
 
             log::info!("Listing the public static files...");

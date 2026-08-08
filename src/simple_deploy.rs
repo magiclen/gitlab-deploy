@@ -1,4 +1,4 @@
-use std::{fmt::Write, fs::File};
+use std::fs::File;
 
 use anyhow::anyhow;
 use execute::Execute;
@@ -6,7 +6,6 @@ use tempfile::tempdir;
 
 use crate::{
     cli::{CLIArgs, CLICommands},
-    constants::*,
     functions::*,
 };
 
@@ -23,9 +22,8 @@ pub(crate) fn simple_deploy(cli_args: CLIArgs) -> anyhow::Result<()> {
         gitlab_api_token: api_token,
     } = cli_args.command
     {
-        check_ssh()?;
-        check_wget()?;
-        check_docker()?;
+        check_command("ssh", "-V")?;
+        check_command("wget", "--version")?;
 
         let ssh_user_hosts = find_ssh_user_hosts(phase, project_id)?;
 
@@ -42,13 +40,7 @@ pub(crate) fn simple_deploy(cli_args: CLIArgs) -> anyhow::Result<()> {
         for ssh_user_host in ssh_user_hosts.iter() {
             log::info!("Deploying to {ssh_user_host}");
 
-            let ssh_root = {
-                let mut ssh_home = get_ssh_home(ssh_user_host)?;
-
-                ssh_home.write_fmt(format_args!("/{PROJECT_DIRECTORY}",))?;
-
-                ssh_home
-            };
+            let ssh_root = get_ssh_project_root(ssh_user_host)?;
 
             let ssh_project = format!(
                 "{ssh_root}/{project_name}-{project_id}/{reference_name}-{commit_sha}",
@@ -58,19 +50,20 @@ pub(crate) fn simple_deploy(cli_args: CLIArgs) -> anyhow::Result<()> {
             );
 
             {
-                let mut command =
-                    create_ssh_command(ssh_user_host, format!("mkdir -p {ssh_project:?}"));
+                let mut command = create_ssh_command(
+                    ssh_user_host,
+                    format!(
+                        "mkdir -p {ssh_project}",
+                        ssh_project = shell_quote(ssh_project.as_str())
+                    ),
+                );
 
-                let status = command.execute()?;
-
-                if let Some(0) = status {
-                    // do nothing
-                } else {
-                    return Err(anyhow!(
+                ensure_exit_success(command.execute()?, || {
+                    anyhow!(
                         "Cannot create the directory {ssh_project:?} for storing the project \
-                         files.",
-                    ));
-                }
+                         files."
+                    )
+                })?;
             }
 
             log::info!("Unpacking the archive file");
@@ -78,17 +71,16 @@ pub(crate) fn simple_deploy(cli_args: CLIArgs) -> anyhow::Result<()> {
             {
                 let mut command = create_ssh_command(
                     ssh_user_host,
-                    format!("tar --strip-components 1 -x -v -f - -C {ssh_project:?}"),
+                    format!(
+                        "tar --strip-components 1 -z -x -v -f - -C {ssh_project}",
+                        ssh_project = shell_quote(ssh_project.as_str())
+                    ),
                 );
 
                 let status =
                     command.execute_input_reader(&mut File::open(archive_file_path.as_path())?)?;
 
-                if let Some(0) = status {
-                    // do nothing
-                } else {
-                    return Err(anyhow!("Cannot deploy the project"));
-                }
+                ensure_exit_success(status, || anyhow!("Cannot deploy the project"))?;
             }
         }
 

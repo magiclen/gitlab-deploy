@@ -1,5 +1,3 @@
-use std::fmt::Write as FmtWrite;
-
 use anyhow::anyhow;
 use execute::{Execute, command_args};
 use tempfile::tempdir;
@@ -22,11 +20,11 @@ pub(crate) fn front_develop(cli_args: CLIArgs) -> anyhow::Result<()> {
         develop_ssh_user_host: ssh_user_host,
     } = cli_args.command
     {
-        check_zstd()?;
-        check_ssh()?;
-        check_wget()?;
-        check_tar()?;
-        check_bash()?;
+        check_command("zstd", "--version")?;
+        check_command("ssh", "-V")?;
+        check_command("wget", "--version")?;
+        check_command("tar", "--version")?;
+        check_command("bash", "--version")?;
 
         let temp_dir = tempdir()?;
 
@@ -44,16 +42,11 @@ pub(crate) fn front_develop(cli_args: CLIArgs) -> anyhow::Result<()> {
 
         log::info!("Deploying to {ssh_user_host}");
 
-        let ssh_root = {
-            let mut ssh_home = get_ssh_home(&ssh_user_host)?;
-
-            ssh_home.write_fmt(format_args!(
-                "/{SERVICE_DIRECTORY}/www/{public_name}",
-                public_name = public_name.as_ref()
-            ))?;
-
-            ssh_home
-        };
+        let ssh_root = format!(
+            "{ssh_home}/{SERVICE_DIRECTORY}/www/{public_name}",
+            ssh_home = get_ssh_home(&ssh_user_host)?,
+            public_name = public_name.as_ref(),
+        );
 
         let ssh_html_path = format!("{ssh_root}/html");
 
@@ -61,43 +54,42 @@ pub(crate) fn front_develop(cli_args: CLIArgs) -> anyhow::Result<()> {
             let mut command = create_ssh_command(
                 &ssh_user_host,
                 format!(
-                    "mkdir -p {ssh_root:?} && ((test -d {ssh_html_path:?} && rm -r \
-                     {ssh_html_path:?}) || true) && mkdir -p {ssh_html_path:?}",
+                    "mkdir -p {ssh_root} && ((test -d {ssh_html_path} && rm -r {ssh_html_path}) \
+                     || true) && mkdir -p {ssh_html_path}",
+                    ssh_root = shell_quote(ssh_root.as_str()),
+                    ssh_html_path = shell_quote(ssh_html_path.as_str()),
                 ),
             );
 
-            let status = command.execute()?;
-
-            if let Some(0) = status {
-                // do nothing
-            } else {
-                return Err(anyhow!(
+            ensure_exit_success(command.execute()?, || {
+                anyhow!(
                     "Cannot create the directory {ssh_html_path:?} for storing the public static \
                      files."
-                ));
-            }
+                )
+            })?;
         }
 
         let tarball_path =
             format!("deploy/{public_name}.tar.zst", public_name = public_name.as_ref());
 
         {
-            let mut command1 = command_args!("zstd", "-T0", "-d", "-c", tarball_path);
+            let mut command1 = command_args!("zstd", "-T0", "-d", "-c", tarball_path.as_str());
 
             command1.current_dir(temp_dir.path());
 
-            let mut command2 =
-                create_ssh_command(&ssh_user_host, format!("tar -xf - -C {ssh_html_path:?}"));
+            let mut command2 = create_ssh_command(
+                &ssh_user_host,
+                format!(
+                    "tar -xf - -C {ssh_html_path}",
+                    ssh_html_path = shell_quote(ssh_html_path.as_str())
+                ),
+            );
 
             log::info!("Extracting {tarball_path}");
 
-            let result = command1.execute_multiple(&mut [&mut command2])?;
-
-            if let Some(0) = result {
-                // do nothing
-            } else {
-                return Err(anyhow!("Extract failed."));
-            }
+            ensure_exit_success(command1.execute_multiple(&mut [&mut command2])?, || {
+                anyhow!("Extract failed.")
+            })?;
         }
 
         log::info!("Listing the public static files...");

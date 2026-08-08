@@ -35,8 +35,7 @@ fn main() -> anyhow::Result<()> {
         log_config.build(),
         simplelog::TerminalMode::Mixed,
         simplelog::ColorChoice::Auto,
-    )
-    .unwrap();
+    )?;
 
     match &args.command {
         CLICommands::FrontendDevelop {

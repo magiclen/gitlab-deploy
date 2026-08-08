@@ -1,12 +1,9 @@
-use std::fmt::Write as FmtWrite;
-
 use anyhow::anyhow;
 use execute::{Execute, command_args};
 use tempfile::tempdir;
 
 use crate::{
     cli::{CLIArgs, CLICommands},
-    constants::*,
     functions::*,
 };
 
@@ -24,12 +21,13 @@ pub(crate) fn back_deploy(cli_args: CLIArgs) -> anyhow::Result<()> {
         gitlab_api_token: api_token,
     } = cli_args.command
     {
-        check_zstd()?;
-        check_ssh()?;
-        check_wget()?;
-        check_tar()?;
-        check_bash()?;
-        check_docker()?;
+        check_command("zstd", "--version")?;
+        // scp comes with ssh, so it is checked implicitly
+        check_command("ssh", "-V")?;
+        check_command("wget", "--version")?;
+        check_command("tar", "--version")?;
+        check_command("bash", "--version")?;
+        check_command("docker", "--version")?;
 
         let ssh_user_hosts = find_ssh_user_hosts(phase, project_id)?;
 
@@ -56,13 +54,7 @@ pub(crate) fn back_deploy(cli_args: CLIArgs) -> anyhow::Result<()> {
         for ssh_user_host in ssh_user_hosts.iter() {
             log::info!("Deploying to {ssh_user_host}");
 
-            let ssh_root = {
-                let mut ssh_home = get_ssh_home(ssh_user_host)?;
-
-                ssh_home.write_fmt(format_args!("/{PROJECT_DIRECTORY}",))?;
-
-                ssh_home
-            };
+            let ssh_root = get_ssh_project_root(ssh_user_host)?;
 
             let ssh_project = format!(
                 "{ssh_root}/{project_name}-{project_id}/{reference_name}-{commit_sha}",
@@ -72,36 +64,36 @@ pub(crate) fn back_deploy(cli_args: CLIArgs) -> anyhow::Result<()> {
             );
 
             {
-                let mut command =
-                    create_ssh_command(ssh_user_host, format!("mkdir -p {ssh_project:?}"));
+                let mut command = create_ssh_command(
+                    ssh_user_host,
+                    format!(
+                        "mkdir -p {ssh_project}",
+                        ssh_project = shell_quote(ssh_project.as_str())
+                    ),
+                );
 
-                let status = command.execute()?;
-
-                if let Some(0) = status {
-                    // do nothing
-                } else {
-                    return Err(anyhow!(
+                ensure_exit_success(command.execute()?, || {
+                    anyhow!(
                         "Cannot create the directory {ssh_project:?} for storing the archive of \
                          public static files."
-                    ));
-                }
+                    )
+                })?;
             }
 
             let ssh_docker_compose_path = format!("{ssh_project}/docker-compose.yml");
 
             {
-                let mut command =
-                    create_ssh_command(ssh_user_host, format!("cat - > {ssh_docker_compose_path}"));
+                let mut command = create_ssh_command(
+                    ssh_user_host,
+                    format!(
+                        "cat - > {ssh_docker_compose_path}",
+                        ssh_docker_compose_path = shell_quote(ssh_docker_compose_path.as_str())
+                    ),
+                );
 
-                let status = command.execute_input(docker_compose.as_str())?;
-
-                if let Some(0) = status {
-                    // do nothing
-                } else {
-                    return Err(anyhow!(
-                        "Cannot create the docker compose file {ssh_docker_compose_path:?}."
-                    ));
-                }
+                ensure_exit_success(command.execute_input(docker_compose.as_str())?, || {
+                    anyhow!("Cannot create the docker compose file {ssh_docker_compose_path:?}.")
+                })?;
             }
 
             let tarball_path =
@@ -119,36 +111,28 @@ pub(crate) fn back_deploy(cli_args: CLIArgs) -> anyhow::Result<()> {
 
                 command.current_dir(temp_dir.path());
 
-                let status = command.execute()?;
-
-                if let Some(0) = status {
-                    // do nothing
-                } else {
-                    return Err(anyhow!(
+                ensure_exit_success(command.execute()?, || {
+                    anyhow!(
                         "Cannot copy {tarball_path:?} to {ssh_user_host}:{ssh_tarball_path:?} \
                          ({ssh_user_host_port}).",
                         ssh_user_host = ssh_user_host.user_host(),
                         ssh_user_host_port = ssh_user_host.get_port(),
-                    ));
-                }
+                    )
+                })?;
             }
 
             log::info!("Extracting {tarball_path}");
 
             {
-                let mut command1 = command_args!("zstd", "-d", "-c", "-f", tarball_path);
+                let mut command1 = command_args!("zstd", "-d", "-c", "-f", tarball_path.as_str());
 
                 command1.current_dir(temp_dir.path());
 
                 let mut command2 = create_ssh_command(ssh_user_host, "docker image load");
 
-                let status = command1.execute_multiple(&mut [&mut command2])?;
-
-                if let Some(0) = status {
-                    // do nothing
-                } else {
-                    return Err(anyhow!("Cannot deploy the docker image"));
-                }
+                ensure_exit_success(command1.execute_multiple(&mut [&mut command2])?, || {
+                    anyhow!("Cannot deploy the docker image")
+                })?;
             }
         }
 
