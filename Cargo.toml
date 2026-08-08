@@ -10,7 +10,7 @@ keywords = ["deploy"]
 categories = ["command-line-utilities"]
 description = "This tool is used for deploying software projects to multiple hosts during different phases."
 license = "MIT"
-include = ["src/**/*", "Cargo.toml", "README.md", "LICENSE"]
+include = ["src/**/*", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE"]
 
 [profile.release]
 lto = true
