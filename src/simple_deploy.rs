@@ -15,6 +15,7 @@ pub(crate) fn simple_deploy(args: SimpleDeployArgs) -> anyhow::Result<()> {
         phase,
         gitlab_api_url_prefix: api_url_prefix,
         gitlab_api_token: api_token,
+        no_check_certificate,
     } = args;
 
     check_command("ssh", "-V")?;
@@ -29,8 +30,14 @@ pub(crate) fn simple_deploy(args: SimpleDeployArgs) -> anyhow::Result<()> {
 
     let temp_dir = tempdir()?;
 
-    let archive_file_path =
-        download_archive(&temp_dir, api_url_prefix, api_token, project_id, &commit_sha)?;
+    let archive_file_path = download_archive(
+        &temp_dir,
+        &api_url_prefix,
+        &api_token,
+        no_check_certificate,
+        project_id,
+        &commit_sha,
+    )?;
 
     for ssh_user_host in ssh_user_hosts.iter() {
         log::info!("Deploying to {ssh_user_host}");

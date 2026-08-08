@@ -1,6 +1,6 @@
 use validators::prelude::*;
 
-#[derive(Debug, Validator)]
+#[derive(Debug, Clone, Validator)]
 #[validator(regex(regex(r"^[a-z0-9\-_]{1,80}$")))]
 pub(crate) struct ImageName(String);
 

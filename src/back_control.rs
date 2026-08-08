@@ -6,6 +6,14 @@ use trim_in_place::TrimInPlace;
 
 use crate::{cli::BackendControlArgs, functions::*, models::*};
 
+/// Returns whether a directory name read from a remote host looks like the name that a deployment wrote.
+fn is_deployment_directory(name: &str) -> bool {
+    !name.is_empty()
+        && name != "."
+        && name != ".."
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+}
+
 pub(crate) fn back_control(args: BackendControlArgs) -> anyhow::Result<()> {
     let BackendControlArgs {
         gitlab_project_id: project_id,
@@ -57,9 +65,12 @@ pub(crate) fn back_control(args: BackendControlArgs) -> anyhow::Result<()> {
 
                 folder.trim_in_place();
 
-                log::info!("Trying to shut down {folder} first");
+                // The name comes from the remote host, so it has to look like the name that the deployment wrote before it is used as a path segment.
+                if !is_deployment_directory(folder.as_str()) {
+                    log::warn!("The latest version information of {ssh_user_host} is not correct");
+                } else {
+                    log::info!("Trying to shut down {folder} first");
 
-                {
                     let ssh_last_up_project = format!("{ssh_project_dir}/{folder}");
 
                     let mut command = create_ssh_command(
@@ -101,46 +112,47 @@ pub(crate) fn back_control(args: BackendControlArgs) -> anyhow::Result<()> {
                 commit_sha = commit_sha.get_short_sha(),
             );
 
-            let mut ssh_command = create_ssh_command(
-                ssh_user_host,
-                format!(
-                    "cd {ssh_project} && echo {log_message} >> {ssh_control_log}",
-                    ssh_project = shell_quote(ssh_project.as_str()),
-                    log_message = shell_quote(log_message.as_str()),
-                    ssh_control_log = shell_quote(ssh_control_log.as_str()),
-                ),
+            let mut remote_command = format!(
+                "cd {ssh_project} && echo {log_message} >> {ssh_control_log}",
+                ssh_project = shell_quote(ssh_project.as_str()),
+                log_message = shell_quote(log_message.as_str()),
+                ssh_control_log = shell_quote(ssh_control_log.as_str()),
             );
+
+            // The latest version is written in the same connection as the control log, since both of them are only written when the control command has already succeeded.
+            let write_last_up = matches!(command, Command::Up | Command::DownAndUp);
+
+            if write_last_up {
+                let last_up = format!(
+                    "{reference_name}-{commit_sha}",
+                    reference_name = reference_name.as_ref(),
+                    commit_sha = commit_sha.get_short_sha(),
+                );
+
+                remote_command.push_str(
+                    format!(
+                        " && echo {last_up} > {ssh_last_up}",
+                        last_up = shell_quote(last_up.as_str()),
+                        ssh_last_up = shell_quote(ssh_last_up.as_str()),
+                    )
+                    .as_str(),
+                );
+            }
+
+            let mut ssh_command = create_ssh_command(ssh_user_host, remote_command);
 
             let output = ssh_command.execute_output()?;
 
             // The control command itself has already succeeded, so a log that cannot be written should not fail the whole run.
             if !output.status.success() {
-                log::warn!("The control log {ssh_control_log:?} cannot be written");
-            }
-        }
-
-        if matches!(command, Command::Up | Command::DownAndUp) {
-            let last_up = format!(
-                "{reference_name}-{commit_sha}",
-                reference_name = reference_name.as_ref(),
-                commit_sha = commit_sha.get_short_sha(),
-            );
-
-            let mut command = create_ssh_command(
-                ssh_user_host,
-                format!(
-                    "cd {ssh_project} && echo {last_up} > {ssh_last_up}",
-                    ssh_project = shell_quote(ssh_project.as_str()),
-                    last_up = shell_quote(last_up.as_str()),
-                    ssh_last_up = shell_quote(ssh_last_up.as_str()),
-                ),
-            );
-
-            let output = command.execute_output()?;
-
-            // The control command itself has already succeeded, so a version file that cannot be written should not fail the whole run.
-            if !output.status.success() {
-                log::warn!("The latest version information cannot be written");
+                if write_last_up {
+                    log::warn!(
+                        "The control log {ssh_control_log:?} or the latest version information \
+                         cannot be written"
+                    );
+                } else {
+                    log::warn!("The control log {ssh_control_log:?} cannot be written");
+                }
             }
         }
     }

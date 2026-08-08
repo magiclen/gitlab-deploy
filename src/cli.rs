@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
+use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, builder::FalseyValueParser};
 use concat_with::concat_line;
 use terminal_size::terminal_size;
 use validators::{
@@ -95,6 +95,10 @@ pub struct FrontendDevelopArgs {
     #[arg(value_parser = parse_api_token)]
     #[arg(help = "Set the token of GitLab APIs")]
     pub gitlab_api_token:      ApiToken,
+    #[arg(long, env = "GITLAB_NO_CHECK_CERTIFICATE")]
+    #[arg(value_parser = FalseyValueParser::new())]
+    #[arg(help = "Do not verify the TLS certificate of the GitLab server")]
+    pub no_check_certificate:  bool,
     #[arg(long, visible_aliases = ["ssh-user-host"], env = "DEVELOP_SSH_HOST")]
     #[arg(value_parser = parse_ssh_user_host)]
     #[arg(help = "Set the SSH user, host and the optional port for development")]
@@ -134,6 +138,10 @@ pub struct FrontendDeployArgs {
     #[arg(value_parser = parse_api_token)]
     #[arg(help = "Set the token of GitLab APIs")]
     pub gitlab_api_token:      ApiToken,
+    #[arg(long, env = "GITLAB_NO_CHECK_CERTIFICATE")]
+    #[arg(value_parser = FalseyValueParser::new())]
+    #[arg(help = "Do not verify the TLS certificate of the GitLab server")]
+    pub no_check_certificate:  bool,
 }
 
 #[derive(Debug, Args)]
@@ -219,6 +227,10 @@ pub struct BackendDeployArgs {
     #[arg(value_parser = parse_api_token)]
     #[arg(help = "Set the token of GitLab APIs")]
     pub gitlab_api_token:      ApiToken,
+    #[arg(long, env = "GITLAB_NO_CHECK_CERTIFICATE")]
+    #[arg(value_parser = FalseyValueParser::new())]
+    #[arg(help = "Do not verify the TLS certificate of the GitLab server")]
+    pub no_check_certificate:  bool,
 }
 
 #[derive(Debug, Args)]
@@ -277,6 +289,10 @@ pub struct SimpleDeployArgs {
     #[arg(value_parser = parse_api_token)]
     #[arg(help = "Set the token of GitLab APIs")]
     pub gitlab_api_token:      ApiToken,
+    #[arg(long, env = "GITLAB_NO_CHECK_CERTIFICATE")]
+    #[arg(value_parser = FalseyValueParser::new())]
+    #[arg(help = "Do not verify the TLS certificate of the GitLab server")]
+    pub no_check_certificate:  bool,
 }
 
 #[derive(Debug, Args)]

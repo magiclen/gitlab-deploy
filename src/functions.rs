@@ -198,22 +198,39 @@ pub(crate) fn check_back_deploy(
         Err(error) => return Err(error.into()),
     };
 
-    let regex =
-        Regex::new(&format!("(?m)^( *image: +{image_name}) *$", image_name = image_name.as_ref()))
-            .unwrap();
-
-    if !regex.is_match(docker_compose.as_str()) {
-        return Err(anyhow!("deploy/{docker_compose_name} or deploy/image-name.txt cannot match"));
-    }
-
-    let docker_compose = regex
-        .replace_all(
-            docker_compose.as_str(),
-            format!("$1:{commit_sha}", commit_sha = commit_sha.get_short_sha()),
-        )
-        .into_owned();
+    let docker_compose = match tag_docker_compose_image(
+        docker_compose.as_str(),
+        image_name.as_ref(),
+        commit_sha.get_short_sha(),
+    )? {
+        Some(docker_compose) => docker_compose,
+        None => {
+            return Err(anyhow!(
+                "deploy/{docker_compose_name} or deploy/image-name.txt cannot match"
+            ));
+        },
+    };
 
     Ok((image_name, docker_compose))
+}
+
+/// Tags every untagged `image` entry of `image_name` with `short_sha`, or returns `None` when there is no such entry.
+fn tag_docker_compose_image(
+    docker_compose: &str,
+    image_name: &str,
+    short_sha: &str,
+) -> anyhow::Result<Option<String>> {
+    // The image name goes into a pattern instead of being matched literally, so it has to be escaped.
+    let regex = Regex::new(&format!(
+        "(?m)^( *image: +{image_name}) *$",
+        image_name = regex::escape(image_name)
+    ))?;
+
+    if !regex.is_match(docker_compose) {
+        return Ok(None);
+    }
+
+    Ok(Some(regex.replace_all(docker_compose, format!("$1:{short_sha}")).into_owned()))
 }
 
 pub(crate) fn check_back_deploy_via_ssh<S: AsRef<str>>(
@@ -222,12 +239,31 @@ pub(crate) fn check_back_deploy_via_ssh<S: AsRef<str>>(
 ) -> anyhow::Result<()> {
     let deploy_path = format!("{ssh_root}/deploy", ssh_root = ssh_root.as_ref());
 
-    if !check_file_exist(ssh_user_host, format!("{deploy_path}/develop-up.sh"))? {
-        return Err(anyhow!("deploy/develop-up.sh cannot be found in the project."));
+    // Both scripts are checked in one connection, which prints the name of every script that is missing.
+    let mut command = create_ssh_command(
+        ssh_user_host,
+        format!(
+            "test -f {up} || echo 'develop-up.sh'; test -f {down} || echo 'develop-down.sh'",
+            up = shell_quote(format!("{deploy_path}/develop-up.sh").as_str()),
+            down = shell_quote(format!("{deploy_path}/develop-down.sh").as_str()),
+        ),
+    );
+
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
+
+    let output = command.execute_output()?;
+
+    if !output.status.success() {
+        log_stderr(output.stderr.as_slice(), log::Level::Error);
+
+        return Err(anyhow!("Cannot check the deployment scripts of {ssh_user_host}"));
     }
 
-    if !check_file_exist(ssh_user_host, format!("{deploy_path}/develop-down.sh"))? {
-        return Err(anyhow!("deploy/develop-down.sh cannot be found in the project."));
+    let missing = String::from_utf8(output.stdout)?;
+
+    if let Some(script) = missing.split_whitespace().next() {
+        return Err(anyhow!("deploy/{script} cannot be found in the project."));
     }
 
     Ok(())
@@ -289,8 +325,9 @@ fn create_ssh_command_inner(
     command: &str,
     read_stdin: bool,
 ) -> Command {
+    // `accept-new` trusts a host that is seen for the first time, but still refuses a host whose key has changed.
     let mut ssh: Command =
-        command_args!("ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes");
+        command_args!("ssh", "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes");
 
     if !read_stdin {
         ssh.arg("-n");
@@ -349,7 +386,7 @@ pub(crate) fn create_scp_command<F: AsRef<str>, T: AsRef<str>>(
     command_args!(
         "scp",
         "-o",
-        "StrictHostKeyChecking=no",
+        "StrictHostKeyChecking=accept-new",
         "-o",
         "BatchMode=yes",
         "-P",
@@ -481,15 +518,14 @@ pub(crate) fn list_ssh_files<S: AsRef<str>>(
     Ok(())
 }
 
-fn check_path_exist(
+pub(crate) fn check_directory_exist<S: AsRef<str>>(
     ssh_user_host: &SshUserHost,
-    test_flag: &str,
-    path: &str,
+    path: S,
 ) -> anyhow::Result<bool> {
-    let mut command = create_ssh_command(
-        ssh_user_host,
-        format!("test {test_flag} {path}", path = shell_quote(path)),
-    );
+    let path = path.as_ref();
+
+    let mut command =
+        create_ssh_command(ssh_user_host, format!("test -d {path}", path = shell_quote(path)));
 
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
@@ -507,22 +543,6 @@ fn check_path_exist(
     log_stderr(output.stderr.as_slice(), log::Level::Error);
 
     Err(anyhow!("Cannot check the existence of {path:?} of {ssh_user_host}"))
-}
-
-#[inline]
-pub(crate) fn check_file_exist<S: AsRef<str>>(
-    ssh_user_host: &SshUserHost,
-    path: S,
-) -> anyhow::Result<bool> {
-    check_path_exist(ssh_user_host, "-f", path.as_ref())
-}
-
-#[inline]
-pub(crate) fn check_directory_exist<S: AsRef<str>>(
-    ssh_user_host: &SshUserHost,
-    path: S,
-) -> anyhow::Result<bool> {
-    check_path_exist(ssh_user_host, "-d", path.as_ref())
 }
 
 /// A `wget` startup file that carries the API token.
@@ -545,14 +565,15 @@ impl WgetConfig {
 fn create_wget_config(
     api_url_prefix: &ApiUrlPrefix,
     api_token: &ApiToken,
+    no_check_certificate: bool,
 ) -> anyhow::Result<WgetConfig> {
-    if api_url_prefix.is_https() {
+    if !api_url_prefix.is_https() {
+        log::warn!("The GitLab API URL is not HTTPS, so the API token is sent in plain text.");
+    } else if no_check_certificate {
         log::warn!(
             "The TLS certificate of the GitLab server is not verified, so the API token can be \
              read by a man in the middle."
         );
-    } else {
-        log::warn!("The GitLab API URL is not HTTPS, so the API token is sent in plain text.");
     }
 
     let dir = tempdir()?;
@@ -568,8 +589,9 @@ fn create_wget_config(
 
 pub(crate) fn download_archive(
     temp_dir: &TempDir,
-    api_url_prefix: ApiUrlPrefix,
-    api_token: ApiToken,
+    api_url_prefix: &ApiUrlPrefix,
+    api_token: &ApiToken,
+    no_check_certificate: bool,
     project_id: u64,
     commit_sha: &CommitSha,
 ) -> anyhow::Result<PathBuf> {
@@ -584,17 +606,14 @@ pub(crate) fn download_archive(
     log::info!("Fetching project from {archive_url:?}");
 
     {
-        let config = create_wget_config(&api_url_prefix, &api_token)?;
+        let config = create_wget_config(api_url_prefix, api_token, no_check_certificate)?;
 
-        let mut command = command_args!(
-            "wget",
-            "--no-check-certificate",
-            "--config",
-            config.path(),
-            archive_url,
-            "-O",
-            archive_save_path,
-        );
+        let mut command =
+            command_args!("wget", "--config", config.path(), archive_url, "-O", archive_save_path);
+
+        if no_check_certificate {
+            command.arg("--no-check-certificate");
+        }
 
         ensure_command_success(&mut command, || anyhow!("Fetched unsuccessfully!"))?;
 
@@ -606,8 +625,9 @@ pub(crate) fn download_archive(
 
 pub(crate) fn download_and_extract_archive(
     temp_dir: &TempDir,
-    api_url_prefix: ApiUrlPrefix,
-    api_token: ApiToken,
+    api_url_prefix: &ApiUrlPrefix,
+    api_token: &ApiToken,
+    no_check_certificate: bool,
     project_id: u64,
     commit_sha: &CommitSha,
 ) -> anyhow::Result<()> {
@@ -620,17 +640,13 @@ pub(crate) fn download_and_extract_archive(
     log::info!("Fetching project from {archive_url:?}");
 
     {
-        let config = create_wget_config(&api_url_prefix, &api_token)?;
+        let config = create_wget_config(api_url_prefix, api_token, no_check_certificate)?;
 
-        let mut command1 = command_args!(
-            "wget",
-            "--no-check-certificate",
-            "--config",
-            config.path(),
-            archive_url,
-            "-O",
-            "-",
-        );
+        let mut command1 = command_args!("wget", "--config", config.path(), archive_url, "-O", "-");
+
+        if no_check_certificate {
+            command1.arg("--no-check-certificate");
+        }
 
         let mut command2: Command = command!("tar --strip-components 1 -z -x -f -");
 
@@ -825,6 +841,40 @@ mod tests {
     #[test]
     fn shell_quote_keeps_shell_metacharacters_literal() {
         assert_eq!("'$(id) `id`'", shell_quote("$(id) `id`").to_string());
+    }
+
+    #[test]
+    fn tag_docker_compose_image_tags_every_entry_of_the_image() {
+        assert_eq!(
+            Some(String::from(
+                "services:\n  api:\n    image: website-api:0b14cd4f\n  worker:\n    image: \
+                 website-api:0b14cd4f\n"
+            )),
+            tag_docker_compose_image(
+                "services:\n  api:\n    image: website-api\n  worker:\n    image: website-api  \n",
+                "website-api",
+                "0b14cd4f"
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn tag_docker_compose_image_finds_no_entry_of_another_image() {
+        assert_eq!(
+            None,
+            tag_docker_compose_image("    image: another-api\n", "website-api", "0b14cd4f")
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn tag_docker_compose_image_finds_no_entry_that_only_starts_with_the_image() {
+        assert_eq!(
+            None,
+            tag_docker_compose_image("    image: website-api-2\n", "website-api", "0b14cd4f")
+                .unwrap()
+        );
     }
 
     #[test]

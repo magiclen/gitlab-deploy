@@ -11,6 +11,7 @@ pub(crate) fn front_develop(args: FrontendDevelopArgs) -> anyhow::Result<()> {
         build_target,
         gitlab_api_url_prefix: api_url_prefix,
         gitlab_api_token: api_token,
+        no_check_certificate,
         develop_ssh_user_host: ssh_user_host,
     } = args;
 
@@ -22,7 +23,14 @@ pub(crate) fn front_develop(args: FrontendDevelopArgs) -> anyhow::Result<()> {
 
     let temp_dir = tempdir()?;
 
-    download_and_extract_archive(&temp_dir, api_url_prefix, api_token, project_id, &commit_sha)?;
+    download_and_extract_archive(
+        &temp_dir,
+        &api_url_prefix,
+        &api_token,
+        no_check_certificate,
+        project_id,
+        &commit_sha,
+    )?;
 
     let public_name = check_front_deploy(&temp_dir)?;
 

@@ -62,9 +62,18 @@ must contain an untagged `image: <image-name>` entry for the configured image.
 
 ### Security
 
-GitLab Deploy currently runs `wget` with `--no-check-certificate` and connects through SSH and SCP
-with `StrictHostKeyChecking=no`. Use it only with GitLab servers and networks that you trust, and
-use dedicated deployment credentials with the minimum permissions needed.
+The TLS certificate of the GitLab server is verified. Pass `--no-check-certificate`, or set the
+`GITLAB_NO_CHECK_CERTIFICATE` environment variable, to skip the verification when the server uses a
+certificate that the deployment client cannot verify, such as a self-signed one. The API token can
+then be read by a man in the middle, so prefer installing the certificate authority on the
+deployment client instead.
+
+SSH and SCP connect with `StrictHostKeyChecking=accept-new`, which trusts a host that is seen for
+the first time and records its key, but refuses to connect once the key of a known host has changed.
+Add the keys of the target hosts to `known_hosts` in advance when even the first connection has to
+be verified.
+
+Use dedicated deployment credentials with the minimum permissions needed.
 
 ## Help
 

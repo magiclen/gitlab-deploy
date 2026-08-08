@@ -12,6 +12,7 @@ pub(crate) fn front_deploy(args: FrontendDeployArgs) -> anyhow::Result<()> {
         phase,
         gitlab_api_url_prefix: api_url_prefix,
         gitlab_api_token: api_token,
+        no_check_certificate,
     } = args;
 
     check_command("zstd", "--version")?;
@@ -30,7 +31,14 @@ pub(crate) fn front_deploy(args: FrontendDeployArgs) -> anyhow::Result<()> {
 
     let temp_dir = tempdir()?;
 
-    download_and_extract_archive(&temp_dir, api_url_prefix, api_token, project_id, &commit_sha)?;
+    download_and_extract_archive(
+        &temp_dir,
+        &api_url_prefix,
+        &api_token,
+        no_check_certificate,
+        project_id,
+        &commit_sha,
+    )?;
 
     let public_name = check_front_deploy(&temp_dir)?;
 
