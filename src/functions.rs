@@ -4,7 +4,7 @@ use std::{
     env,
     fmt::{self, Display, Formatter},
     fs::{self, File},
-    io::{BufRead, BufReader, ErrorKind},
+    io::{BufRead, BufReader, ErrorKind, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -18,7 +18,7 @@ use execute::{Execute, command, command_args};
 use regex::Regex;
 use scanner_rust::{ScannerError, ScannerStr};
 use slash_formatter::delete_end_slash_in_place;
-use tempfile::TempDir;
+use tempfile::{NamedTempFile, TempDir};
 use trim_in_place::TrimInPlace;
 use validators::prelude::*;
 
@@ -73,6 +73,51 @@ pub(crate) fn ensure_exit_success<E: FnOnce() -> anyhow::Error>(
         Some(0) => Ok(()),
         _ => Err(error()),
     }
+}
+
+/// Runs the command with the standard streams inherited and treats an exit status other than `0` as an error built by `error`.
+#[inline]
+pub(crate) fn ensure_command_success<E: FnOnce() -> anyhow::Error>(
+    command: &mut Command,
+    error: E,
+) -> anyhow::Result<()> {
+    ensure_exit_success(command.execute_output()?.status.code(), error)
+}
+
+/// Runs `first | second` with the standard error streams inherited and treats an exit status other than `0` of either command as an error built by `error`.
+pub(crate) fn ensure_pipeline_success<E: FnOnce() -> anyhow::Error>(
+    first: &mut Command,
+    second: &mut Command,
+    error: E,
+) -> anyhow::Result<()> {
+    first.stdout(Stdio::piped());
+
+    let mut first_child = first.spawn()?;
+
+    // The read end is moved into `second`, so the parent no longer keeps the pipe open after the spawn and `second` can see the EOF.
+    let first_stdout = first_child.stdout.take().unwrap();
+
+    second.stdin(first_stdout);
+
+    // The second command has to be waited for first, otherwise a full pipe would deadlock both of them.
+    let second_status = match second.status() {
+        Ok(second_status) => second_status,
+        Err(err) => {
+            // Nothing is reading the pipe now, so the first command has to be stopped instead of being waited for.
+            let _ = first_child.kill();
+            let _ = first_child.wait();
+
+            return Err(err.into());
+        },
+    };
+
+    let first_status = first_child.wait()?;
+
+    if !first_status.success() || !second_status.success() {
+        return Err(error());
+    }
+
+    Ok(())
 }
 
 pub(crate) fn log_stderr(stderr: &[u8], level: log::Level) {
@@ -202,6 +247,17 @@ pub(crate) fn check_back_deploy_via_ssh<S: AsRef<str>>(
     Ok(())
 }
 
+/// Returns the relative path of the archive that `deploy/build.sh` should have produced and fails when it is missing.
+pub(crate) fn check_build_archive(temp_dir: &TempDir, name: &str) -> anyhow::Result<String> {
+    let archive_path = format!("deploy/{name}.tar.zst");
+
+    if !temp_dir.path().join(archive_path.as_str()).is_file() {
+        return Err(anyhow!("{archive_path} cannot be found after the build."));
+    }
+
+    Ok(archive_path)
+}
+
 pub(crate) fn run_front_build(temp_dir: &TempDir, target: BuildTarget) -> anyhow::Result<()> {
     log::info!("Running deploy/build.sh");
 
@@ -318,6 +374,26 @@ pub(crate) fn get_ssh_project_root(ssh_user_host: &SshUserHost) -> anyhow::Resul
     Ok(ssh_root)
 }
 
+/// Returns the directory that keeps every deployment of a project on the remote host.
+#[inline]
+pub(crate) fn get_ssh_project_dir(ssh_root: &str, project_name: &Name, project_id: u64) -> String {
+    format!("{ssh_root}/{project_name}-{project_id}", project_name = project_name.as_ref())
+}
+
+/// Returns the directory of one deployment of a project on the remote host.
+#[inline]
+pub(crate) fn get_ssh_project(
+    ssh_project_dir: &str,
+    reference_name: &Name,
+    commit_sha: &CommitSha,
+) -> String {
+    format!(
+        "{ssh_project_dir}/{reference_name}-{commit_sha}",
+        reference_name = reference_name.as_ref(),
+        commit_sha = commit_sha.get_short_sha(),
+    )
+}
+
 pub(crate) fn list_ssh_files<S: AsRef<str>>(
     ssh_user_host: &SshUserHost,
     path: S,
@@ -380,6 +456,17 @@ pub(crate) fn check_directory_exist<S: AsRef<str>>(
     check_path_exist(ssh_user_host, "-d", path.as_ref())
 }
 
+/// Creates a `wget` startup file that carries the API token, so that the token never appears in the command line where any user could read it with `ps`.
+///
+/// Note that `--config` replaces the default startup files, which means `~/.wgetrc` is not read at all.
+fn create_wget_config(temp_dir: &TempDir, api_token: &ApiToken) -> anyhow::Result<NamedTempFile> {
+    let mut config = NamedTempFile::new_in(temp_dir.path())?;
+
+    writeln!(config, "header = PRIVATE-TOKEN: {api_token}", api_token = api_token.as_ref())?;
+
+    Ok(config)
+}
+
 pub(crate) fn download_archive(
     temp_dir: &TempDir,
     api_url_prefix: ApiUrlPrefix,
@@ -398,17 +485,19 @@ pub(crate) fn download_archive(
     log::info!("Fetching project from {archive_url:?}");
 
     {
+        let config = create_wget_config(temp_dir, &api_token)?;
+
         let mut command = command_args!(
             "wget",
             "--no-check-certificate",
+            "--config",
+            config.path(),
             archive_url,
-            "--header",
-            format!("PRIVATE-TOKEN: {api_token}", api_token = api_token.as_ref()),
             "-O",
             archive_save_path,
         );
 
-        ensure_exit_success(command.execute()?, || anyhow!("Fetched unsuccessfully!"))?;
+        ensure_command_success(&mut command, || anyhow!("Fetched unsuccessfully!"))?;
 
         log::info!("Fetched successfully.");
     }
@@ -432,21 +521,23 @@ pub(crate) fn download_and_extract_archive(
     log::info!("Fetching project from {archive_url:?}");
 
     {
+        let config = create_wget_config(temp_dir, &api_token)?;
+
         let mut command1 = command_args!(
             "wget",
             "--no-check-certificate",
+            "--config",
+            config.path(),
             archive_url,
-            "--header",
-            format!("PRIVATE-TOKEN: {api_token}", api_token = api_token.as_ref()),
             "-O",
             "-",
         );
 
-        let mut command2: Command = command!("tar --strip-components 1 -z -x -v -f -");
+        let mut command2: Command = command!("tar --strip-components 1 -z -x -f -");
 
         command2.current_dir(temp_dir.path());
 
-        ensure_exit_success(command1.execute_multiple(&mut [&mut command2])?, || {
+        ensure_pipeline_success(&mut command1, &mut command2, || {
             anyhow!("Fetched unsuccessfully!")
         })?;
 

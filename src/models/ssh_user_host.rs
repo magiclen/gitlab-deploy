@@ -10,9 +10,8 @@ static USER_HOST_REGEX: LazyLock<Regex> =
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub(crate) struct SshUserHost {
-    user: String,
-    host: String,
-    port: u16,
+    user_host: String,
+    port:      u16,
 }
 
 impl SshUserHost {
@@ -28,9 +27,10 @@ impl SshUserHost {
             None => None,
         };
 
+        let user_host = format!("{user}@{host}");
+
         Ok(SshUserHost {
-            user: String::from(user),
-            host: String::from(host),
+            user_host,
             port: port.unwrap_or(22),
         })
     }
@@ -41,8 +41,8 @@ impl SshUserHost {
     }
 
     #[inline]
-    pub(crate) fn user_host(&self) -> String {
-        format!("{}@{}", self.user, self.host)
+    pub(crate) fn user_host(&self) -> &str {
+        self.user_host.as_str()
     }
 }
 
@@ -50,9 +50,13 @@ impl Display for SshUserHost {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         if self.port != 22 {
-            f.write_fmt(format_args!("{}@{}:{}", self.user, self.host, self.port))
+            f.write_fmt(format_args!(
+                "{user_host}:{port}",
+                user_host = self.user_host,
+                port = self.port
+            ))
         } else {
-            f.write_fmt(format_args!("{}@{}", self.user, self.host))
+            f.write_str(self.user_host.as_str())
         }
     }
 }

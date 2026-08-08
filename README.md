@@ -7,7 +7,59 @@ GitLab Deploy is used for deploying software projects to multiple hosts during d
 
 ## Setup
 
-TBD
+Run GitLab Deploy on a Linux deployment client. Install the commands required by the selected
+workflow, including `ssh`, `scp`, `wget`, `tar`, `bash`, and `zstd`. Backend image deployments also
+need Docker on the deployment client. The remote hosts need the commands used by their deployment
+scripts, including Docker for backend deployments.
+
+Commands that fetch an archive from GitLab require `--gitlab-api-url-prefix` and
+`--gitlab-api-token`. The token needs permission to read the project. Control commands do not fetch
+from GitLab, so `frontend-control`, `backend-control`, and `simple-control` do not require these
+options.
+
+Configure non-interactive SSH access from the deployment client to every target host. The tool uses
+the remote user's home directory and writes deployments under `~/projects`. Frontend commands use
+`~/services/www` for published static files.
+
+`simple-control` runs the command written after `--` on every host of the phase. Each argument is
+quoted before it is sent, so the remote program receives exactly the arguments given here and shell
+features such as `$VAR`, `*`, and `&&` are not expanded remotely. Run them through a shell
+explicitly when they are needed, for example `-- bash -c 'systemctl reload nginx && echo done'`.
+
+### Phases
+
+Create a phase file at `$HOME/phases/<phase>`. Each non-comment line starts with a GitLab project
+ID followed by one or more SSH targets in `user@host` or `user@host:port` form.
+
+```
+# $HOME/phases/test
+123 deploy@web-01.example.com deploy@web-02.example.com:2222
+456 .
+```
+
+The `.` target copies the host list from the immediately preceding project line. Project IDs must
+be unique within a phase file. Empty lines and text after `#` are ignored.
+
+For a deployment of project `website` with ID `123`, reference `pre-release`, and commit SHA
+`0b14cd4f`, the project directory is:
+
+```
+~/projects/website-123/pre-release-0b14cd4f
+```
+
+### Project Files
+
+Frontend deployment projects need `deploy/build.sh`, `deploy/public-name.txt`, and a build output
+named `deploy/<public-name>.tar.zst`. Backend deployment projects need `deploy/build.sh`,
+`deploy/develop-up.sh`, `deploy/develop-down.sh`, `deploy/image-name.txt`, and
+`deploy/docker-compose.yml` or `deploy/docker-compose.<build-target>.yml`. The Docker Compose file
+must contain an untagged `image: <image-name>` entry for the configured image.
+
+### Security
+
+GitLab Deploy currently runs `wget` with `--no-check-certificate` and connects through SSH and SCP
+with `StrictHostKeyChecking=no`. Use it only with GitLab servers and networks that you trust, and
+use dedicated deployment credentials with the minimum permissions needed.
 
 ## Help
 
@@ -20,7 +72,7 @@ gitlab-deploy backend-develop  --gitlab-project-id 123 --gitlab-project-path web
 gitlab-deploy backend-deploy   --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test
 gitlab-deploy backend-control  --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test --command up
 gitlab-deploy simple-deploy    --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test
-gitlab-deploy simple-control   --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test sudo /usr/local/bin/apply-nginx.sh dev.env
+gitlab-deploy simple-control   --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test -- sudo /usr/local/bin/apply-nginx.sh dev.env
 
 Usage: gitlab-deploy <COMMAND>
 

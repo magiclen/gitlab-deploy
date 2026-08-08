@@ -26,7 +26,7 @@ const APP_ABOUT: &str = concat!(
         "backend-deploy   --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test",
         "backend-control  --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test --command up",
         "simple-deploy    --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test",
-        "simple-control   --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test sudo /usr/local/bin/apply-nginx.sh dev.env",
+        "simple-control   --gitlab-project-id 123 --commit-sha 0b14cd4fdec3bdffffdaf1de6fe13aaa01c4827f --project-name website --reference-name pre-release --phase test -- sudo /usr/local/bin/apply-nginx.sh dev.env",
     )
 );
 
@@ -275,14 +275,6 @@ pub enum CLICommands {
         #[arg(value_parser = parse_phase)]
         #[arg(help = "Set the phase")]
         phase:                    Phase,
-        #[arg(long, visible_aliases = ["api-url-prefix"], env = "GITLAB_API_URL_PREFIX")]
-        #[arg(value_parser = parse_api_url_prefix)]
-        #[arg(help = "Set the URL prefix for GitLab APIs")]
-        gitlab_api_url_prefix:    ApiUrlPrefix,
-        #[arg(long, visible_aliases = ["api-token"], env = "GITLAB_API_TOKEN")]
-        #[arg(value_parser = parse_api_token)]
-        #[arg(help = "Set the token of GitLab APIs")]
-        gitlab_api_token:         ApiToken,
         #[arg(long)]
         #[arg(help = "Inject the project directory as the first argument to the command")]
         inject_project_directory: bool,
