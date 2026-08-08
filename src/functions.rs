@@ -10,10 +10,10 @@ use std::{
 
 use anyhow::anyhow;
 use chrono::{
-    format::{DelayedFormat, StrftimeItems},
     Local,
+    format::{DelayedFormat, StrftimeItems},
 };
-use execute::{command, command_args, Execute};
+use execute::{Execute, command, command_args};
 use regex::Regex;
 use scanner_rust::{ScannerError, ScannerStr};
 use slash_formatter::delete_end_slash_in_place;
@@ -535,7 +535,7 @@ pub(crate) fn find_ssh_user_hosts(
                     return Err(anyhow!(
                         "In {phase_path:?} at line {line_number}, cannot read the project id: \
                          {err:?}",
-                    ))
+                    ));
                 },
                 ScannerError::IOError(err) => return Err(err.into()),
                 ScannerError::ParseFloatError(_) => unreachable!(),
@@ -561,7 +561,7 @@ pub(crate) fn find_ssh_user_hosts(
                         return Err(anyhow!(
                             "In {phase_path:?} at line {line_number}, should be written after the \
                              line that you want to reference",
-                        ))
+                        ));
                     },
                 }
             }
@@ -572,7 +572,7 @@ pub(crate) fn find_ssh_user_hosts(
                     return Err(anyhow!(
                         "In {phase_path:?} at line {line_number}, the format of {user_host:?} is \
                          not correct",
-                    ))
+                    ));
                 },
             };
 

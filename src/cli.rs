@@ -71,8 +71,8 @@ pub enum CLICommands {
         #[arg(help = "Set the SSH user, host and the optional port for development")]
         develop_ssh_user_host: SshUserHost,
     },
-    #[command(about = "Fetch the project via GitLab API and then build it and deploy the \
-                       archive of public static files on multiple hosts according to the phase")]
+    #[command(about = "Fetch the project via GitLab API and then build it and deploy the archive \
+                       of public static files on multiple hosts according to the phase")]
     #[command(after_help = AFTER_HELP)]
     FrontendDeploy {
         #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]
@@ -221,8 +221,8 @@ pub enum CLICommands {
         #[arg(help = "Set the command")]
         command:           Command,
     },
-    #[command(about = "Fetch the project via GitLab API and deploy the project files on \
-                       multiple hosts according to the phase")]
+    #[command(about = "Fetch the project via GitLab API and deploy the project files on multiple \
+                       hosts according to the phase")]
     #[command(after_help = AFTER_HELP)]
     SimpleDeploy {
         #[arg(long, visible_aliases = ["project-id", "id"], env = "CI_PROJECT_ID")]

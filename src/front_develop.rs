@@ -1,7 +1,7 @@
 use std::fmt::Write as FmtWrite;
 
 use anyhow::anyhow;
-use execute::{command_args, Execute};
+use execute::{Execute, command_args};
 use tempfile::tempdir;
 
 use crate::{
