@@ -91,7 +91,7 @@ pub struct FrontendDevelopArgs {
     #[arg(value_parser = parse_api_url_prefix)]
     #[arg(help = "Set the URL prefix for GitLab APIs")]
     pub gitlab_api_url_prefix: ApiUrlPrefix,
-    #[arg(long, visible_aliases = ["api-token"], env = "GITLAB_API_TOKEN")]
+    #[arg(long, visible_aliases = ["api-token"], env = "GITLAB_API_TOKEN", hide_env_values = true)]
     #[arg(value_parser = parse_api_token)]
     #[arg(help = "Set the token of GitLab APIs")]
     pub gitlab_api_token:      ApiToken,
@@ -134,7 +134,7 @@ pub struct FrontendDeployArgs {
     #[arg(value_parser = parse_api_url_prefix)]
     #[arg(help = "Set the URL prefix for GitLab APIs")]
     pub gitlab_api_url_prefix: ApiUrlPrefix,
-    #[arg(long, visible_aliases = ["api-token"], env = "GITLAB_API_TOKEN")]
+    #[arg(long, visible_aliases = ["api-token"], env = "GITLAB_API_TOKEN", hide_env_values = true)]
     #[arg(value_parser = parse_api_token)]
     #[arg(help = "Set the token of GitLab APIs")]
     pub gitlab_api_token:      ApiToken,
@@ -223,7 +223,7 @@ pub struct BackendDeployArgs {
     #[arg(value_parser = parse_api_url_prefix)]
     #[arg(help = "Set the URL prefix for GitLab APIs")]
     pub gitlab_api_url_prefix: ApiUrlPrefix,
-    #[arg(long, visible_aliases = ["api-token"], env = "GITLAB_API_TOKEN")]
+    #[arg(long, visible_aliases = ["api-token"], env = "GITLAB_API_TOKEN", hide_env_values = true)]
     #[arg(value_parser = parse_api_token)]
     #[arg(help = "Set the token of GitLab APIs")]
     pub gitlab_api_token:      ApiToken,
@@ -285,7 +285,7 @@ pub struct SimpleDeployArgs {
     #[arg(value_parser = parse_api_url_prefix)]
     #[arg(help = "Set the URL prefix for GitLab APIs")]
     pub gitlab_api_url_prefix: ApiUrlPrefix,
-    #[arg(long, visible_aliases = ["api-token"], env = "GITLAB_API_TOKEN")]
+    #[arg(long, visible_aliases = ["api-token"], env = "GITLAB_API_TOKEN", hide_env_values = true)]
     #[arg(value_parser = parse_api_token)]
     #[arg(help = "Set the token of GitLab APIs")]
     pub gitlab_api_token:      ApiToken,

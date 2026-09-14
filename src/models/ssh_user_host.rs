@@ -18,6 +18,10 @@ impl SshUserHost {
     pub(crate) fn parse_str<S: AsRef<str>>(s: S) -> Result<Self, ()> {
         let s = s.as_ref();
 
+        if s.starts_with('-') {
+            return Err(());
+        }
+
         let result = USER_HOST_REGEX.captures(s).ok_or(())?;
 
         let user = result.get(1).unwrap().as_str();
@@ -64,6 +68,11 @@ impl Display for SshUserHost {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_rejects_an_option() {
+        assert!(SshUserHost::parse_str("-lother@host").is_err());
+    }
 
     #[test]
     fn parse_without_a_port_uses_22() {

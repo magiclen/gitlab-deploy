@@ -146,6 +146,14 @@ fn read_deploy_name<T: ValidateString>(deploy_dir: &Path, file_name: &str) -> an
     }
 }
 
+pub(crate) fn check_public_name(name: &Name) -> anyhow::Result<()> {
+    if matches!(name.as_ref(), "." | "..") {
+        return Err(anyhow!("{:?} is not a supported public name", name.as_ref()));
+    }
+
+    Ok(())
+}
+
 pub(crate) fn check_front_deploy(temp_dir: &TempDir) -> anyhow::Result<Name> {
     let deploy_dir = temp_dir.path().join("deploy");
 
@@ -153,7 +161,11 @@ pub(crate) fn check_front_deploy(temp_dir: &TempDir) -> anyhow::Result<Name> {
         return Err(anyhow!("deploy/build.sh cannot be found in the project."));
     }
 
-    read_deploy_name(deploy_dir.as_path(), "public-name.txt")
+    let name = read_deploy_name(deploy_dir.as_path(), "public-name.txt")?;
+
+    check_public_name(&name)?;
+
+    Ok(name)
 }
 
 pub(crate) fn check_back_deploy(
@@ -222,7 +234,7 @@ fn tag_docker_compose_image(
 ) -> anyhow::Result<Option<String>> {
     // The image name goes into a pattern instead of being matched literally, so it has to be escaped.
     let regex = Regex::new(&format!(
-        "(?m)^( *image: +{image_name}) *$",
+        "(?mR)^( *image: +{image_name}) *$",
         image_name = regex::escape(image_name)
     ))?;
 
@@ -336,6 +348,7 @@ fn create_ssh_command_inner(
     ssh.args([
         "-p",
         ssh_user_host.get_port().to_string().as_str(),
+        "--",
         ssh_user_host.user_host(),
         command,
     ]);
@@ -391,6 +404,7 @@ pub(crate) fn create_scp_command<F: AsRef<str>, T: AsRef<str>>(
         "BatchMode=yes",
         "-P",
         ssh_user_host.get_port().to_string(),
+        "--",
         from.as_ref(),
         // Since OpenSSH 9.0 scp speaks SFTP, which takes the remote path verbatim instead of passing it through a shell, so it must not be quoted here.
         format!(
@@ -817,6 +831,18 @@ mod tests {
     }
 
     #[test]
+    fn check_public_name_accepts_a_site_name() {
+        assert!(check_public_name(&Name::parse_str("website-v2.example").unwrap()).is_ok());
+    }
+
+    #[test]
+    fn check_public_name_rejects_path_traversal() {
+        for name in [".", ".."] {
+            assert!(check_public_name(&Name::parse_str(name).unwrap()).is_err());
+        }
+    }
+
+    #[test]
     fn ensure_pipeline_success_fails_when_the_second_command_exits_early() {
         // The first command writes much more than a pipe buffer, so it would block forever if the read end of the pipe were still open here.
         let mut first = command_args!("head", "-c", "10000000", "/dev/zero");
@@ -865,6 +891,23 @@ mod tests {
             None,
             tag_docker_compose_image("    image: another-api\n", "website-api", "0b14cd4f")
                 .unwrap()
+        );
+    }
+
+    #[test]
+    fn tag_docker_compose_image_tags_every_entry_with_crlf() {
+        assert_eq!(
+            Some(String::from(
+                "services:\r\n  api:\r\n    image: website-api:0b14cd4f\r\n  worker:\r\n    \
+                 image: website-api:0b14cd4f\r\n"
+            )),
+            tag_docker_compose_image(
+                "services:\r\n  api:\r\n    image: website-api\r\n  worker:\r\n    image: \
+                 website-api  \r\n",
+                "website-api",
+                "0b14cd4f"
+            )
+            .unwrap()
         );
     }
 

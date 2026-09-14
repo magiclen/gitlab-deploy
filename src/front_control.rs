@@ -95,6 +95,8 @@ pub(crate) fn front_control(args: FrontendControlArgs) -> anyhow::Result<()> {
             },
         };
 
+        check_public_name(&public_name)?;
+
         let ssh_www_path = format!(
             "{ssh_home}/{SERVICE_DIRECTORY}/www/{public_name}",
             public_name = public_name.as_ref()
