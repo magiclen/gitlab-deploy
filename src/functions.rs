@@ -376,6 +376,11 @@ pub(crate) fn create_ssh_command_with_stdin<S: AsRef<str>>(
     create_ssh_command_inner(ssh_user_host, command.as_ref(), true)
 }
 
+/// Runs a remote pipeline with Bash so that either command can report a failure.
+pub(crate) fn create_ssh_pipeline_command(ssh_user_host: &SshUserHost, script: &str) -> Command {
+    create_ssh_command(ssh_user_host, format!("bash -o pipefail -c {}", shell_quote(script)))
+}
+
 /// Creates a directory on the remote host and fails when it cannot be created.
 pub(crate) fn create_ssh_directory(
     ssh_user_host: &SshUserHost,

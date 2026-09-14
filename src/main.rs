@@ -10,6 +10,7 @@ mod back_develop;
 mod front_control;
 mod front_deploy;
 mod front_develop;
+mod front_publish;
 mod simple_control;
 mod simple_deploy;
 

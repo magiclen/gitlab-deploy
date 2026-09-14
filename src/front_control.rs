@@ -5,7 +5,9 @@ use execute::Execute;
 use trim_in_place::TrimInPlace;
 use validators::prelude::*;
 
-use crate::{cli::FrontendControlArgs, constants::*, functions::*, models::*};
+use crate::{
+    cli::FrontendControlArgs, constants::*, front_publish::Publication, functions::*, models::*,
+};
 
 pub(crate) fn front_control(args: FrontendControlArgs) -> anyhow::Result<()> {
     let FrontendControlArgs {
@@ -103,6 +105,27 @@ pub(crate) fn front_control(args: FrontendControlArgs) -> anyhow::Result<()> {
         );
         let ssh_html_path = format!("{ssh_www_path}/html");
 
+        let publication = Publication::prepare(ssh_user_host, &ssh_www_path)?;
+
+        let mut command = create_ssh_pipeline_command(
+            ssh_user_host,
+            &format!(
+                "cd {ssh_project} && zstd -d -c -- {tarball} | tar -xf - -C {html}",
+                ssh_project = shell_quote(&ssh_project),
+                tarball = shell_quote(tarball.as_ref()),
+                html = shell_quote(&publication.html_path()),
+            ),
+        );
+
+        if let Err(error) = ensure_command_success(&mut command, || {
+            anyhow!("Cannot extract the public static files")
+        }) {
+            publication.discard();
+            return Err(error);
+        }
+
+        publication.publish()?;
+
         {
             let ssh_control_log = format!("{ssh_project_dir}/control.log");
 
@@ -116,14 +139,7 @@ pub(crate) fn front_control(args: FrontendControlArgs) -> anyhow::Result<()> {
             let mut command = create_ssh_command(
                 ssh_user_host,
                 format!(
-                    "cd {ssh_project} && mkdir -p public && (zstd -d -c {tarball} | tar -xf - -C \
-                     public) && mkdir -p {ssh_www_path} && ((test -d {ssh_html_path} && rm -rf \
-                     {ssh_html_path}) || true) && cp -r public {ssh_html_path} && rm -rf public \
-                     && echo {log_message} >> {ssh_control_log}",
-                    ssh_project = shell_quote(ssh_project.as_str()),
-                    tarball = shell_quote(tarball.as_ref()),
-                    ssh_www_path = shell_quote(ssh_www_path.as_str()),
-                    ssh_html_path = shell_quote(ssh_html_path.as_str()),
+                    "echo {log_message} >> {ssh_control_log}",
                     log_message = shell_quote(log_message.as_str()),
                     ssh_control_log = shell_quote(ssh_control_log.as_str()),
                 ),

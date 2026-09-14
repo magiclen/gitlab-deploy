@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use execute::command_args;
 use tempfile::tempdir;
 
-use crate::{cli::FrontendDevelopArgs, constants::*, functions::*};
+use crate::{cli::FrontendDevelopArgs, constants::*, front_publish::Publication, functions::*};
 
 pub(crate) fn front_develop(args: FrontendDevelopArgs) -> anyhow::Result<()> {
     let FrontendDevelopArgs {
@@ -47,25 +47,7 @@ pub(crate) fn front_develop(args: FrontendDevelopArgs) -> anyhow::Result<()> {
     );
 
     let ssh_html_path = format!("{ssh_root}/html");
-
-    {
-        let mut command = create_ssh_command(
-            &ssh_user_host,
-            format!(
-                "mkdir -p {ssh_root} && ((test -d {ssh_html_path} && rm -rf {ssh_html_path}) || \
-                 true) && mkdir -p {ssh_html_path}",
-                ssh_root = shell_quote(ssh_root.as_str()),
-                ssh_html_path = shell_quote(ssh_html_path.as_str()),
-            ),
-        );
-
-        ensure_command_success(&mut command, || {
-            anyhow!(
-                "Cannot create the directory {ssh_html_path:?} for storing the public static \
-                 files."
-            )
-        })?;
-    }
+    let publication = Publication::prepare(&ssh_user_host, &ssh_root)?;
 
     {
         let mut command1 = command_args!("zstd", "-d", "-c", tarball_path.as_str());
@@ -76,14 +58,21 @@ pub(crate) fn front_develop(args: FrontendDevelopArgs) -> anyhow::Result<()> {
             &ssh_user_host,
             format!(
                 "tar -xf - -C {ssh_html_path}",
-                ssh_html_path = shell_quote(ssh_html_path.as_str())
+                ssh_html_path = shell_quote(&publication.html_path())
             ),
         );
 
         log::info!("Extracting {tarball_path}");
 
-        ensure_pipeline_success(&mut command1, &mut command2, || anyhow!("Extract failed."))?;
+        if let Err(error) =
+            ensure_pipeline_success(&mut command1, &mut command2, || anyhow!("Extract failed."))
+        {
+            publication.discard();
+            return Err(error);
+        }
     }
+
+    publication.publish()?;
 
     log::info!("Listing the public static files...");
 

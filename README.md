@@ -12,6 +12,12 @@ workflow, including `ssh`, `scp`, `wget`, `tar`, `bash`, and `zstd`. Backend ima
 need Docker on the deployment client. The remote hosts need the commands used by their deployment
 scripts, including Docker for backend deployments.
 
+Frontend control hosts also need Bash to check both commands in the archive extraction pipeline.
+Frontend publication prepares the new files in a temporary directory next to `html` before switching
+directories. The previous directory is restored if the switch fails. The `html` path remains a real
+directory; the switch can still leave a short interval when it is absent. If a restore fails, the
+error message gives the location of the backup so that it can be recovered manually.
+
 Commands that fetch an archive from GitLab require `--gitlab-api-url-prefix` and
 `--gitlab-api-token`. The token needs permission to read the project. Control commands do not fetch
 from GitLab, so `frontend-control`, `backend-control`, and `simple-control` do not require these
