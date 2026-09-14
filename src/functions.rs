@@ -381,6 +381,32 @@ pub(crate) fn create_ssh_pipeline_command(ssh_user_host: &SshUserHost, script: &
     create_ssh_command(ssh_user_host, format!("bash -o pipefail -c {}", shell_quote(script)))
 }
 
+pub(crate) fn has_ssh_command(ssh_user_host: &SshUserHost, program: &str) -> anyhow::Result<bool> {
+    let mut command = create_ssh_command(
+        ssh_user_host,
+        format!(
+            "if command -v {program} > /dev/null 2>&1; then printf available; else printf \
+             missing; fi",
+            program = shell_quote(program),
+        ),
+    );
+
+    command.stdout(Stdio::piped());
+
+    let output = command.execute_output()?;
+
+    // A missing program has a successful probe with a separate reply, so SSH failures cannot select the fallback.
+    ensure_exit_success(output.status.code(), || {
+        anyhow!("Cannot check {program:?} on {ssh_user_host}")
+    })?;
+
+    match output.stdout.as_slice() {
+        b"available" => Ok(true),
+        b"missing" => Ok(false),
+        _ => Err(anyhow!("Unexpected reply when checking {program:?} on {ssh_user_host}")),
+    }
+}
+
 /// Creates a directory on the remote host and fails when it cannot be created.
 pub(crate) fn create_ssh_directory(
     ssh_user_host: &SshUserHost,

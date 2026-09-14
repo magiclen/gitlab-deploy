@@ -50,6 +50,22 @@ pub(crate) fn back_control(args: BackendControlArgs) -> anyhow::Result<()> {
         let command_str = command.get_command_str();
 
         if matches!(command, Command::DownAndUp) {
+            let mut check = create_ssh_command(
+                ssh_user_host,
+                format!(
+                    "test -d {project} && test -f {compose}",
+                    project = shell_quote(&ssh_project),
+                    compose = shell_quote(&format!("{ssh_project}/docker-compose.yml")),
+                ),
+            );
+
+            ensure_command_success(&mut check, || {
+                anyhow!(
+                    "Cannot find the target deployment or its docker-compose.yml at \
+                     {ssh_project:?} on {ssh_user_host}"
+                )
+            })?;
+
             let mut command = create_ssh_command(
                 ssh_user_host,
                 format!("cat {ssh_last_up}", ssh_last_up = shell_quote(ssh_last_up.as_str())),

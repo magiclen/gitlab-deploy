@@ -95,9 +95,25 @@ pub(crate) fn back_deploy(args: BackendDeployArgs) -> anyhow::Result<()> {
             ssh_tarball_path.as_str(),
         )?;
 
-        log::info!("Extracting {tarball_path}");
+        if has_ssh_command(ssh_user_host, "zstd")? {
+            log::info!("Extracting {ssh_tarball_path} on {ssh_user_host}");
 
-        {
+            let mut command = create_ssh_pipeline_command(
+                ssh_user_host,
+                &format!(
+                    "zstd -d -c -f -- {archive} | docker image load",
+                    archive = shell_quote(&ssh_tarball_path),
+                ),
+            );
+
+            ensure_command_success(&mut command, || {
+                anyhow!("Cannot deploy the docker image on {ssh_user_host}")
+            })?;
+        } else {
+            log::info!(
+                "zstd is not available on {ssh_user_host}; extracting {tarball_path} locally"
+            );
+
             let mut command1 = command_args!("zstd", "-d", "-c", "-f", tarball_path.as_str());
 
             command1.current_dir(temp_dir.path());

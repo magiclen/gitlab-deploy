@@ -32,6 +32,27 @@ pub(crate) fn back_develop(args: BackendDevelopArgs) -> anyhow::Result<()> {
 
         check_back_deploy_via_ssh(&ssh_user_host, ssh_root.as_str())?;
 
+        {
+            let mut command = create_ssh_command(
+                &ssh_user_host,
+                format!(
+                    "cd {ssh_root} && git fetch origin && (git rev-parse --verify --quiet \
+                     --end-of-options {reference} > /dev/null || git rev-parse --verify --quiet \
+                     --end-of-options {remote_reference} > /dev/null)",
+                    ssh_root = shell_quote(&ssh_root),
+                    reference = shell_quote(&format!("{}^{{commit}}", reference.as_ref())),
+                    remote_reference = shell_quote(&format!(
+                        "refs/remotes/origin/{}^{{commit}}",
+                        reference.as_ref()
+                    )),
+                ),
+            );
+
+            ensure_command_success(&mut command, || {
+                anyhow!("Cannot fetch and find {:?} on {ssh_user_host}", reference.as_ref())
+            })?;
+        }
+
         log::info!("Running deploy/develop-down.sh");
 
         {
@@ -70,11 +91,7 @@ pub(crate) fn back_develop(args: BackendDevelopArgs) -> anyhow::Result<()> {
             })?;
         }
     } else {
-        let ssh_url = format!(
-            "{ssh_url_prefix}/{project_path}.git",
-            ssh_url_prefix = ssh_url_prefix.as_ref(),
-            project_path = project_path.as_ref()
-        );
+        let ssh_url = ssh_url_prefix.repository_url(&project_path);
 
         log::info!(
             "The project does not exist, trying to clone {ssh_url:?} and checkout {reference:?}",
@@ -84,8 +101,8 @@ pub(crate) fn back_develop(args: BackendDevelopArgs) -> anyhow::Result<()> {
         let mut command = create_ssh_command(
             &ssh_user_host,
             format!(
-                "mkdir -p {ssh_root} && cd {ssh_root} && git clone --recursive {ssh_url} . && git \
-                 checkout {reference}",
+                "mkdir -p {ssh_root} && cd {ssh_root} && git clone {ssh_url} . && git checkout \
+                 {reference}",
                 ssh_root = shell_quote(ssh_root.as_str()),
                 ssh_url = shell_quote(ssh_url.as_str()),
                 reference = shell_quote(reference.as_ref()),
@@ -97,6 +114,21 @@ pub(crate) fn back_develop(args: BackendDevelopArgs) -> anyhow::Result<()> {
                 "Cannot clone {ssh_url:?} and checkout out {reference:?}",
                 reference = reference.as_ref()
             )
+        })?;
+    }
+
+    {
+        let mut command = create_ssh_command(
+            &ssh_user_host,
+            format!(
+                "cd {ssh_root} && git submodule sync --recursive && git submodule update --init \
+                 --recursive",
+                ssh_root = shell_quote(&ssh_root),
+            ),
+        );
+
+        ensure_command_success(&mut command, || {
+            anyhow!("Cannot update the submodules on {ssh_user_host}")
         })?;
     }
 

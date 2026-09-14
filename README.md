@@ -12,6 +12,12 @@ workflow, including `ssh`, `scp`, `wget`, `tar`, `bash`, and `zstd`. Backend ima
 need Docker on the deployment client. The remote hosts need the commands used by their deployment
 scripts, including Docker for backend deployments.
 
+Backend image deployments first upload the compressed image archive, then use remote `zstd` and
+Docker to load it. This remote extraction path also needs Bash. When `zstd` is not available on a
+host, the deployment client extracts the image locally and streams it to that host's Docker instead.
+SSH, extraction, and Docker errors fail the deployment; only a missing remote `zstd` selects the local
+path. The uploaded archive is kept in both cases.
+
 Frontend control hosts also need Bash to check both commands in the archive extraction pipeline.
 Frontend publication prepares the new files in a temporary directory next to `html` before switching
 directories. The previous directory is restored if the switch fails. The `html` path remains a real
@@ -26,6 +32,12 @@ options.
 Configure non-interactive SSH access from the deployment client to every target host. The tool uses
 the remote user's home directory and writes deployments under `~/projects`. Frontend commands use
 `~/services/www` for published static files.
+
+For `backend-develop`, `--gitlab-ssh-url-prefix` accepts `git@gitlab.example.com` or
+`ssh://git@gitlab.example.com`. With project path `group/project`, these produce
+`git@gitlab.example.com:group/project.git` and `ssh://git@gitlab.example.com/group/project.git`.
+Use `ssh://git@gitlab.example.com:2222` for a custom port. Existing SCP path prefixes such as
+`git@gitlab.example.com:base` are also supported and produce `git@gitlab.example.com:base/group/project.git`.
 
 `simple-control` runs the command written after `--` on every host of the phase. Each argument is
 quoted before it is sent, so the remote program receives exactly the arguments given here and shell
